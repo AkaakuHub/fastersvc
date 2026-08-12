@@ -51,7 +51,7 @@ python3 train_pe.py --dataset-cache dataset_cache
 ```
 
 3. Train content encoder
-Distill HuBERT-base. According to the WavLM paper, the 4th, 9th layer contains speaker information and phoneme infomation, so it is distilled. (Speaker classification can be performed using linear transformation from the features in the fourth layer.)
+Distill the ninth hidden layer of HuBERT-base, which provides phonetic content with less source-speaker information than earlier layers.
 ```sh
 python3 train_ce.py --dataset-cache dataset_cache
 ```

@@ -45,7 +45,7 @@ python3 train_pe.py --dataset-cache dataset_cache
 ```
 
 3. コンテンツエンコーダーを学習。
-HuBERT-baseを蒸留する。WavLMの論文によると、第4, 9層に話者と音素情報が含まれているので、それを蒸留する。(第4層の特徴量から線形変換で話者分類ができる。)
+初期層より入力話者の情報が少なく、音素内容を保持するHuBERT-baseの第9隠れ層を蒸留する。
 ```sh
 python3 train_ce.py --dataset-cache dataset_cache
 ```
