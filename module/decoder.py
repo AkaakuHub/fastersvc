@@ -6,6 +6,14 @@ from .common import DCC
 from .excitation import generate_excitation
 
 
+def initialize_wavegrad_convolution(module):
+    convolution = module.conv if isinstance(module, DCC) else module
+    if isinstance(convolution, nn.Conv1d):
+        nn.init.orthogonal_(convolution.weight)
+        if convolution.bias is not None:
+            nn.init.zeros_(convolution.bias)
+
+
 class FiLM(nn.Module):
     def __init__(self, channels, cond_channels, condition_count=2):
         super().__init__()
@@ -17,6 +25,9 @@ class FiLM(nn.Module):
             DCC(cond_channels, channels * 2, 3, 1)
             for _ in range(condition_count)
         ])
+        for convolution in (*self.input_convs, *self.output_convs):
+            nn.init.xavier_uniform_(convolution.conv.weight)
+            nn.init.zeros_(convolution.conv.bias)
 
     def forward(self, *conditions):
         if len(conditions) != len(self.input_convs):
@@ -153,6 +164,11 @@ class Decoder(nn.Module):
             ))
         # output layer
         self.output_layer = DCC(channels[-1], 1, 3, 1)
+        self.apply(initialize_wavegrad_convolution)
+        for upsample in self.ups:
+            for convolution in (*upsample.film.input_convs, *upsample.film.output_convs):
+                nn.init.xavier_uniform_(convolution.conv.weight)
+                nn.init.zeros_(convolution.conv.bias)
 
     def generate_source(self, p):
         initial_phase = torch.rand(p.shape[0], 1, 1, device=p.device, dtype=p.dtype)

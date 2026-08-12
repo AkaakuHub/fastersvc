@@ -40,6 +40,23 @@ class DecoderTest(unittest.TestCase):
 
         self.assertEqual(output_channels, [16, 12, 8, 4])
 
+    def test_uses_wavegrad_initialization_for_waveform_blocks(self):
+        torch.manual_seed(3)
+        decoder = Decoder(
+            channels=[16, 12, 8, 4],
+            cond_channels=[16, 12, 8, 4],
+            content_channels=8,
+        )
+
+        weight = decoder.ups[0].residual.weight[:, :, 0]
+        gram = weight.transpose(0, 1) @ weight
+
+        self.assertTrue(torch.allclose(gram, torch.eye(gram.shape[0]), atol=1e-5))
+        self.assertTrue(torch.equal(
+            decoder.ups[0].film.input_convs[0].conv.bias,
+            torch.zeros_like(decoder.ups[0].film.input_convs[0].conv.bias),
+        ))
+
     def test_rejects_excitation_that_differs_from_content_timing(self):
         decoder = Decoder(
             channels=[16, 12, 8, 4],
