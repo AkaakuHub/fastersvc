@@ -20,56 +20,65 @@
 ## インストール
 1. このリポジトリをクローン
 ```sh
-git clone https://github.com/uthree/fastersvc.git
+git clone https://github.com/AkaakuHub/fastersvc.git
 ```
 2. 依存関係をインストール
 ```sh
 pip3 install -r requirements.txt
 ```
 ## 事前学習モデルをダウンロードする
-JVSコーパスで事前学習したモデルを[こちら](https://huggingface.co/uthree/fastersvc-jvs-corpus-pretrained)にて公開しています。
+JVSコーパスで事前学習したモデルを[こちら](https://huggingface.co/uthree/fastersvc-jvs-corpus-pretrained)にて公開しています。content encoderとpitch estimatorは初期値として利用できます。修正後の単一励振源decoderとdiscriminatorはcheckpoint契約が異なるため、再学習が必要です。
 
 ## 事前学習
 基礎的な音声変換を行うモデルを学習する。この段階では特定の話者に特化したモデルになるわけではないが、基本的な音声合成ができるモデルをあらかじめ用意しておくことで、少しの調整だけで特定の話者に特化したモデルを学習することができる。
 
 以下に手順を示す。
-1. ピッチ推定器を学習  
+1. 音声とF0を学習cacheへ前処理
+```sh
+python3 preprocess.py <dataset-directory> --output dataset_cache
+```
+
+2. ピッチ推定器を学習
 WORLDのharvestアルゴリズムによるピッチ推定を高速かつ並列に処理可能な1次元CNNで蒸留する。
 ```sh
-python3 train_pe.py <dataset path>
+python3 train_pe.py --dataset-cache dataset_cache
 ```
 
-2. コンテンツエンコーダーを学習。  
+3. コンテンツエンコーダーを学習。
 HuBERT-baseを蒸留する。WavLMの論文によると、第4, 9層に話者と音素情報が含まれているので、それを蒸留する。(第4層の特徴量から線形変換で話者分類ができる。)
 ```sh
-python3 train_ce.py <dataset path>
+python3 train_ce.py --dataset-cache dataset_cache
 ```
 
-3. デコーダーを学習  
-デコーダーは、ピッチとコンテンツから元の波形を再構築することを目標とする。
+4. デコーダーを学習
+デコーダーは、ピッチ、コンテンツ、音量、有声／無声励振源から元の波形を再構築する。FastSVC論文のMulti-resolution STFT lossとLeast-squares adversarial lossを使用し、既定では600,000step学習する。
 
 ```sh
-python3 train_dec.py <datset.path>
+python3 train_dec.py --dataset-cache dataset_cache --fp16
 ```
 
 ## ファインチューニング
 事前学習したモデルを、特定話者への変換に特化したモデルに調整することによって、より精度の高いモデルを製作することが可能です。この工程は事前学習と比べて非常に少ない時間で完了します。
-1. 特定話者の音声ファイルのみを一つのフォルダにまとめる。
-2. デコーダーをファインチューニングする。
+1. 特定話者の音声ファイルのみを一つのフォルダへまとめてキャッシュを作成する。
 ```sh
-python3 train_dec.py <特定話者の音声ファイルだけがあるフォルダ>
+python3 preprocess.py <speaker-audio-directory> --output speaker_cache
+```
+2. 明示的に選んだdecoderとdiscriminatorをファインチューニングする。
+```sh
+python3 train_dec.py --dataset-cache speaker_cache --decoder-path <decoder-checkpoint> --discriminator-path <discriminator-checkpoint> --training-state-path <training-state-checkpoint> --steps <target-total-step> --fp16
 ```
 3. ベクトル検索用の辞書を作成する。これにより毎回音声ファイルをエンコードする必要がなくなります。
 ```sh
-python3 extract_index.py <特定話者の音声ファイルだけがあるフォルダ> -o <辞書の出力先(任意)>
+python3 extract_index.py --dataset-cache speaker_cache --output <dictionary-output>
 ```
 4. 推論する際は`-idx <辞書ファイル>`オプションをつけることで任意の辞書データを読み込むことができます。
 
 ### 学習オプション
-- `-fp16 True` をつけると16ビット浮動小数点数による学習が可能。RTXシリーズのGPUの場合のみ可能。
-- `-b <number>` でバッチサイズを変更。デフォルトは `16`。
-- `-e <number>` でエポック数を変更。 デフォルトは `60`。
-- `-d <device name>` で演算デバイスを変更。 デフォルトは`cuda`。
+- `--fp16`を付けるとmixed precisionで学習する。
+- `--batch-size <number>`でバッチサイズを変更する。既定値は`16`。
+- `--steps <number>`で総学習step数を変更する。既定値は`600000`。
+- `--device <device>`で演算deviceを変更する。既定値は`cuda`。
+- decoder、discriminator、optimizer、scalerをatomicに保存し、同じ`--training-state-path`を指定すると同一stepから再開する。
 
 ## 推論
 1. `inputs` フォルダを作成する。
@@ -81,7 +90,7 @@ python3 infer.py -t <ターゲットの音声ファイル>
 
 ### 追加のオプション
 - `-a <0.0から1.0の数値>`で元音声情報の透過率を設定できます。
-- `--normalize True` で、音量を正規化できます。
+- `--normalize`で音量を正規化できます。
 - `-d <デバイス名>` で演算デバイスを変更できます。もともと高速なのであまり意味がないかもしれませんが。
 - `-p <音階>` でピッチシフトを行うことができます。男女間の音声変換に有用です。
 
@@ -97,6 +106,13 @@ python3 infer_streaming.py -i <入力デバイスID> -o <出力デバイスID> -
 ```
 (ループバックのオプションはつけなくても動作します。)
 
+streaming入出力は現在24kHzのaudio deviceを必要とする。異なるsample rateはchunk単位の不連続なresampleを行わず、明示的に拒否する。
+
+## テスト
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
 ## 参考文献
 - [FastSVC](https://arxiv.org/abs/2011.05731)
 - [kNN-VC](https://arxiv.org/abs/2305.18975)
@@ -104,3 +120,6 @@ python3 infer_streaming.py -i <入力デバイスID> -o <出力デバイスID> -
 - [StreamVC](https://arxiv.org/abs/2401.03078v1)
 - [Hifi-GAN](https://arxiv.org/abs/2010.05646)
 - [AdaIN](https://arxiv.org/abs/1703.06868)
+- [Seed-VC](https://github.com/Plachtaa/seed-vc)
+- [ESTVocoder](https://arxiv.org/abs/2411.11258)
+- [LLVC](https://arxiv.org/abs/2311.00873)

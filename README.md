@@ -23,7 +23,7 @@ Low latency is achieved by using a "causal" convolution layer that does not refe
 ## Installation
 1. clone this repository.
 ```sh
-git clone https://github.com/uthree/fastersvc.git
+git clone https://github.com/AkaakuHub/fastersvc.git
 ```
 2. install requirements
 ```sh
@@ -31,51 +31,60 @@ pip3 install -r requirements.txt
 ```
 
 ## Download pretrained model
-The model pretrained with the JVS corpus is published [here](https://huggingface.co/uthree/fastersvc-jvs-corpus-pretrained).
+The JVS model is published [here](https://huggingface.co/uthree/fastersvc-jvs-corpus-pretrained). Its content encoder and pitch estimator can initialize training. The corrected single-excitation decoder and discriminator have a different checkpoint contract and must be trained again.
 
 ## Pre-training
 Train a model for basic voice conversion. At this stage, the model is not specialized for a specific speaker, but having a model that can perform basic voice synthesis allows for easy adaptation to a specific speaker with minimal adjustments.
 
 Here are the steps:
 
-1. Train pitch estimator.
+1. Preprocess audio and F0 into the training cache.
+
+```sh
+python3 preprocess.py <dataset-directory> --output dataset_cache
+```
+
+2. Train pitch estimator.
 Distill pitch estimation using a fast and parallelizable 1D CNN with the harvest algorithm from WORLD.
 ```sh
-python3 train_pe.py <dataset path>
+python3 train_pe.py --dataset-cache dataset_cache
 ```
 
-2. Train content encoder
+3. Train content encoder
 Distill HuBERT-base. According to the WavLM paper, the 4th, 9th layer contains speaker information and phoneme infomation, so it is distilled. (Speaker classification can be performed using linear transformation from the features in the fourth layer.)
 ```sh
-python3 train_ce.py <dataset path>
+python3 train_ce.py --dataset-cache dataset_cache
 ```
 
-3. Train decoder
-The goal of the decoder is to reconstruct the original waveform from pitch and content.
+4. Train decoder
+The decoder reconstructs the original waveform from pitch, content, loudness and a voiced/unvoiced excitation. Training uses the multi-resolution STFT and least-squares adversarial losses described by FastSVC. The default run is 600,000 steps.
 
-sh
 ```sh
-python3 train_dec.py <datset.path>
+python3 train_dec.py --dataset-cache dataset_cache --fp16
 ```
 
 ## Fine-tuning
 By adjusting the pre-trained model to a model specialized for conversion to a specific speaker, it is possible to create a more accurate model. This process takes much less time than pre-learning.
-1. Combine only the audio files of a specific speaker into one folder.
-2. Fine tune the decoder.
+1. Combine only the audio files of a specific speaker into one folder and create its cache.
 ```sh
-python3 train_dec.py <Folder containing only audio files of a specific speaker>
-````
+python3 preprocess.py <speaker-audio-directory> --output speaker_cache
+```
+2. Fine tune the decoder and discriminator from an explicitly selected checkpoint.
+```sh
+python3 train_dec.py --dataset-cache speaker_cache --decoder-path <decoder-checkpoint> --discriminator-path <discriminator-checkpoint> --training-state-path <training-state-checkpoint> --steps <target-total-step> --fp16
+```
 3. Create a dictionary for vector search. This eliminates the need to encode audio files each time.
 ```sh
-python3 extract_index.py <Folder containing only audio files of a specific speaker> -o <Dictionary output destination (optional)>
+python3 extract_index.py --dataset-cache speaker_cache --output <dictionary-output>
 ```
 4. When inferring, you can load arbitrary dictionary data by adding the `-idx <dictionary file>` option.
 
 ## Training Options
-- add `-fp16 True` to accelerate training with float16 if you have RTX series GPU.
-- add `-b <number>` to set batch size. default is `16`.
-- add `-e <number>` to set epoch. default is `60`.
-- add `-d <device name>` to set training device, default is `cuda`.
+- Add `--fp16` to enable mixed-precision training.
+- Add `--batch-size <number>` to set the batch size. The default is `16`.
+- Add `--steps <number>` to set the total training step. The default is `600000`.
+- Add `--device <device>` to set the training device. The default is `cuda`.
+- Decoder, discriminator, optimizer and scaler states are saved atomically. Reusing `--training-state-path` resumes the exact step.
 
 ## Inference
 1. Create an directory `inputs`
@@ -87,8 +96,8 @@ python3 infer.py -t <target audio file>
 
 ### Additional options
 - You can set the transparency of the original audio information with `-a <number from 0.0 to 1.0>`.
-- You can normalize the volume with `--normalize True`.
-- You can change the calculation device with `=d <device name>`. Although it may not make much sense since it is originally high speed.
+- You can normalize the volume with `--normalize`.
+- You can change the calculation device with `-d <device name>`.
 - Pitch shift can be performed with `-p <scale>`. Useful for voice conversion between men and women.
 
 ## Realtime Inference with PyAudio (This is a feature in the testing stage)
@@ -103,11 +112,22 @@ python3 infer_streaming.py -i <input device id> -o <output device id> -l <loopba
 ```
 (The loopback option is optional.)
 
+Streaming input and output currently require 24 kHz audio devices. The program rejects a different sample rate instead of applying discontinuous chunk-wise resampling.
+
+## Tests
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
 ## References
 - [FastSVC](https://arxiv.org/abs/2011.05731)
 - [kNN-VC](https://arxiv.org/abs/2305.18975)
 - [WavLM](https://arxiv.org/pdf/2110.13900.pdf) (Fig. 2)
 - [StreamVC](https://arxiv.org/abs/2401.03078v1)
 - [Hifi-GAN](https://arxiv.org/abs/2010.05646)
+- [Seed-VC](https://github.com/Plachtaa/seed-vc)
+- [ESTVocoder](https://arxiv.org/abs/2411.11258)
+- [LLVC](https://arxiv.org/abs/2311.00873)
 
 This document is translated from Japanese using ChatGPT.
