@@ -10,7 +10,7 @@ def normalize_ssl_input(waveforms, epsilon=1e-7):
     return (waveforms - mean) / torch.sqrt(variance + epsilon)
 
 
-def a_weighting(frequencies):
+def a_weighting(frequencies, minimum_db=-80.0):
     squared_frequencies = frequencies.square()
     numerator = (12194.0 ** 2) * squared_frequencies.square()
     denominator = (
@@ -23,7 +23,7 @@ def a_weighting(frequencies):
     )
     response = numerator / denominator
     weighting_db = 20.0 * torch.log10(response) + 2.0
-    return torch.where(frequencies == 0, torch.full_like(weighting_db, -torch.inf), weighting_db)
+    return weighting_db.clamp_min(minimum_db)
 
 
 def perceptual_loudness(

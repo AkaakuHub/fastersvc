@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from module.audio import normalize_ssl_input, perceptual_loudness
+from module.audio import a_weighting, normalize_ssl_input, perceptual_loudness
 
 
 class AudioPreprocessingTest(unittest.TestCase):
@@ -26,6 +26,12 @@ class AudioPreprocessingTest(unittest.TestCase):
 
         self.assertEqual(loudness.shape, (2, 1, 5))
         self.assertTrue(torch.equal(loudness, torch.full_like(loudness, -80.0)))
+
+    def test_a_weighting_uses_the_reference_frequency_scale(self):
+        weighting = a_weighting(torch.tensor([0.0, 1000.0]))
+
+        self.assertEqual(weighting[0].item(), -80.0)
+        self.assertAlmostEqual(weighting[1].item(), 0.0, places=2)
 
     def test_perceptual_loudness_applies_a_weighting(self):
         sample_rate = 24000
