@@ -33,7 +33,9 @@ def rebuild_cache_item(task):
     if output_pitch.exists() and output_wave.exists():
         return item_id
 
-    waveform, _ = torchaudio.load(source_wave)
+    waveform, sample_rate = torchaudio.load(source_wave)
+    if sample_rate != 24000:
+        raise ValueError(f"source cache waveform sample rate must be 24000: {source_wave}")
     waveform = waveform.mean(dim=0, keepdim=True)
     pitch = compute_f0(waveform, algorithm=pitch_algorithm)[0]
     publish_cache_item(source_wave, source_pitch, output_directory, pitch)
