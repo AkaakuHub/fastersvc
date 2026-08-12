@@ -2,10 +2,18 @@ import unittest
 
 import torch
 
-from module.decoder import Decoder
+from module.decoder import Decoder, FiLM
 
 
 class DecoderTest(unittest.TestCase):
+    def test_film_builds_one_shift_and_scale_from_both_conditions(self):
+        film = FiLM(channels=4, cond_channels=3)
+
+        shift, scale = film(torch.randn(1, 3, 8), torch.randn(1, 3, 8))
+
+        self.assertEqual(shift.shape, (1, 4, 8))
+        self.assertEqual(scale.shape, (1, 4, 8))
+
     def test_synthesizes_bounded_waveform_at_expected_length(self):
         decoder = Decoder(
             channels=[16, 12, 8, 4],

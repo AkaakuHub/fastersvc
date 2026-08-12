@@ -9,22 +9,30 @@ from .excitation import generate_excitation
 class FiLM(nn.Module):
     def __init__(self, channels, cond_channels, condition_count=2):
         super().__init__()
-        self.to_mu = nn.ModuleList([
-            nn.Conv1d(cond_channels, channels, 1)
+        self.input_convs = nn.ModuleList([
+            DCC(cond_channels, cond_channels, 3, 1)
             for _ in range(condition_count)
         ])
-        self.to_sigma = nn.ModuleList([
-            nn.Conv1d(cond_channels, channels, 1)
+        self.output_convs = nn.ModuleList([
+            DCC(cond_channels, channels * 2, 3, 1)
             for _ in range(condition_count)
         ])
 
-    def forward(self, x, *conditions):
-        if len(conditions) != len(self.to_mu):
+    def forward(self, *conditions):
+        if len(conditions) != len(self.input_convs):
             raise ValueError("FiLM condition count differs from its configured inputs")
-        mu = sum(layer(condition) for layer, condition in zip(self.to_mu, conditions))
-        sigma = sum(layer(condition) for layer, condition in zip(self.to_sigma, conditions))
-        x = x * mu + sigma
-        return x
+        shifts = []
+        scales = []
+        for input_conv, output_conv, condition in zip(
+                self.input_convs,
+                self.output_convs,
+                conditions):
+            condition = input_conv(condition)
+            condition = F.leaky_relu(condition, 0.2)
+            shift, scale = output_conv(condition).chunk(2, dim=1)
+            shifts.append(shift)
+            scales.append(scale)
+        return sum(shifts), sum(scales)
 
 
 class Downsample(nn.Module):
@@ -55,13 +63,16 @@ class Upsample(nn.Module):
         super().__init__()
         self.factor = factor
 
-        self.c1 = DCC(input_channels, input_channels, 3, 1)
-        self.c2 = DCC(input_channels, input_channels, 3, 3)
-        self.film1 = FiLM(input_channels, cond_channels)
-        self.c3 = DCC(input_channels, input_channels, 3, 9)
-        self.c4 = DCC(input_channels, input_channels, 3, 27)
-        self.film2 = FiLM(input_channels, cond_channels)
-        self.c5 = DCC(input_channels, output_channels, 3, 1)
+        self.residual = nn.Conv1d(input_channels, output_channels, 1)
+        self.c1 = DCC(input_channels, output_channels, 3, 1)
+        self.c2 = DCC(output_channels, output_channels, 3, 3)
+        self.c3 = DCC(output_channels, output_channels, 3, 9)
+        self.c4 = DCC(output_channels, output_channels, 3, 27)
+        self.film = FiLM(output_channels, cond_channels)
+
+    @staticmethod
+    def affine(x, shift, scale):
+        return shift + scale * x
 
     def forward(self, x, source_condition, loudness_condition):
         source_condition = F.interpolate(
@@ -76,23 +87,24 @@ class Upsample(nn.Module):
             mode='linear',
             align_corners=False,
         )
-        x = F.interpolate(x, scale_factor=self.factor, mode='linear', align_corners=False)
-        res = x
+        residual = F.interpolate(x, scale_factor=self.factor, mode='linear', align_corners=False)
+        residual = self.residual(residual)
         x = F.leaky_relu(x, 0.2)
+        x = F.interpolate(x, scale_factor=self.factor, mode='linear', align_corners=False)
         x = self.c1(x)
+        shift, scale = self.film(source_condition, loudness_condition)
+        x = self.affine(x, shift, scale)
         x = F.leaky_relu(x, 0.2)
         x = self.c2(x)
-        x = self.film1(x, source_condition, loudness_condition)
-        x = x + res
-        res = x
+        x = x + residual
+        residual = x
+        x = self.affine(x, shift, scale)
         x = F.leaky_relu(x, 0.2)
         x = self.c3(x)
+        x = self.affine(x, shift, scale)
         x = F.leaky_relu(x, 0.2)
         x = self.c4(x)
-        x = self.film2(x, source_condition, loudness_condition)
-        x = x + res
-        x = self.c5(x)
-        return x
+        return x + residual
 
 
 
