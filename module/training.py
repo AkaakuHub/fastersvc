@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 
-DEFAULT_DECODER_LEARNING_RATE = 1e-4
+DEFAULT_DECODER_LEARNING_RATE = 1e-3
 
 
 def training_data_loader(dataset, batch_size, workers, device):

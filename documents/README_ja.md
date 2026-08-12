@@ -51,7 +51,7 @@ python3 train_ce.py --dataset-cache dataset_cache
 ```
 
 4. デコーダーを学習
-デコーダーは、コンテンツ、250HzのA特性ラウドネス、有声／無声励振源から元の波形を再構築する。FastSVC論文のMulti-resolution STFT lossとLeast-squares adversarial lossを使用する。この24kHz実装の初期学習率は0.0001とし、識別器は100,000stepから参加する。学習率は100,000stepごとに半減し、既定では600,000step学習する。
+デコーダーは、コンテンツ、250HzのA特性ラウドネス、有声／無声励振源から元の波形を再構築する。FastSVC論文のMulti-resolution STFT lossとLeast-squares adversarial lossを使用する。初期学習率は0.001とし、識別器は100,000stepから参加する。学習率は100,000stepごとに半減し、既定では600,000step学習する。
 
 ```sh
 python3 train_dec.py --dataset-cache dataset_cache --fp16

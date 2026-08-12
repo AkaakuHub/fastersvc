@@ -57,7 +57,7 @@ python3 train_ce.py --dataset-cache dataset_cache
 ```
 
 4. Train decoder
-The decoder reconstructs the original waveform from content, 250Hz A-weighted loudness and a voiced/unvoiced excitation. Training uses the multi-resolution STFT and least-squares adversarial losses described by FastSVC. This 24kHz implementation uses an initial learning rate of 0.0001, the discriminator starts at 100,000 steps, the learning rate halves every 100,000 steps and the default run is 600,000 steps.
+The decoder reconstructs the original waveform from content, 250Hz A-weighted loudness and a voiced/unvoiced excitation. Training uses the multi-resolution STFT and least-squares adversarial losses described by FastSVC. The initial learning rate is 0.001, the discriminator starts at 100,000 steps, the learning rate halves every 100,000 steps and the default run is 600,000 steps.
 
 ```sh
 python3 train_dec.py --dataset-cache dataset_cache --fp16

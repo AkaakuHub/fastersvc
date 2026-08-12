@@ -43,7 +43,7 @@ class TrainingContractsTest(unittest.TestCase):
         self.assertEqual(estimator.output_channels, 512)
 
     def test_uses_paper_learning_rate_decay(self):
-        self.assertEqual(DEFAULT_DECODER_LEARNING_RATE, 0.0001)
+        self.assertEqual(DEFAULT_DECODER_LEARNING_RATE, 0.001)
         self.assertEqual(learning_rate_at_step(0.001, 99999), 0.001)
         self.assertEqual(learning_rate_at_step(0.001, 100000), 0.0005)
         self.assertEqual(learning_rate_at_step(0.001, 200000), 0.00025)
