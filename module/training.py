@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 
 
+DEFAULT_DECODER_LEARNING_RATE = 1e-4
+
+
 def training_data_loader(dataset, batch_size, workers, device):
     if workers < 0:
         raise ValueError("data loader worker count must not be negative")

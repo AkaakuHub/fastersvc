@@ -13,7 +13,7 @@ from module.audio import PerceptualLoudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
-from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer, training_data_loader
+from module.training import DEFAULT_DECODER_LEARNING_RATE, atomic_save, crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer, training_data_loader
 
 
 parser = argparse.ArgumentParser(description="train voice conversion model")
@@ -22,7 +22,7 @@ parser.add_argument('--dataset-cache', default='dataset_cache')
 parser.add_argument('-cep', '--content-encoder-path', default='models/content_encoder.pt')
 parser.add_argument('-dip', '--discriminator-path', default='models/discriminator.pt')
 parser.add_argument('-dep', '--decoder-path', default='models/decoder.pt')
-parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
+parser.add_argument('-lr', '--learning-rate', type=float, default=DEFAULT_DECODER_LEARNING_RATE)
 parser.add_argument('-d', '--device', default='cuda')
 parser.add_argument('--steps', default=600000, type=int)
 parser.add_argument('-b', '--batch-size', default=32, type=int)
