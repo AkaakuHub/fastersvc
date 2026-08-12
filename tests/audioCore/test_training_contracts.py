@@ -40,6 +40,7 @@ class TrainingContractsTest(unittest.TestCase):
 
         self.assertEqual(identifiers[0].item(), 0)
         self.assertLess(identifiers[1].item(), estimator.output_channels)
+        self.assertEqual(estimator.output_channels, 512)
 
     def test_uses_paper_learning_rate_decay(self):
         self.assertEqual(learning_rate_at_step(0.001, 99999), 0.001)
