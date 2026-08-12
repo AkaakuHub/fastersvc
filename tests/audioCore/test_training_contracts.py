@@ -1,5 +1,7 @@
+import tempfile
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -8,10 +10,28 @@ from module.adversarial import discriminator_loss, generator_adversarial_loss
 from module.common import compute_f0, compute_f0_harvest
 from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
-from module.training import crop_aligned_batch, learning_rate_at_step, step_scaled_optimizer
+from module.pitch_estimator import PitchEstimator
+from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, step_scaled_optimizer
 
 
 class TrainingContractsTest(unittest.TestCase):
+    def test_atomic_save_replaces_temporary_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "model.pt"
+
+            atomic_save({"step": 3}, path)
+
+            self.assertEqual(torch.load(path, weights_only=True), {"step": 3})
+            self.assertFalse(Path(f"{path}.saving").exists())
+
+    def test_pitch_estimator_covers_world_training_range(self):
+        estimator = PitchEstimator()
+
+        identifiers = estimator.freq2id(torch.tensor([0.0, 1100.0]))
+
+        self.assertEqual(identifiers[0].item(), 0)
+        self.assertLess(identifiers[1].item(), estimator.output_channels)
+
     def test_uses_paper_learning_rate_decay(self):
         self.assertEqual(learning_rate_at_step(0.001, 99999), 0.001)
         self.assertEqual(learning_rate_at_step(0.001, 100000), 0.0005)

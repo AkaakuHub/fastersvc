@@ -13,7 +13,7 @@ from module.audio import PerceptualLoudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
-from module.training import crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer
+from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer
 
 
 parser = argparse.ArgumentParser(description="train voice conversion model")
@@ -47,15 +47,6 @@ def load_or_init_models(device=torch.device('cpu')):
     if os.path.exists(args.discriminator_path):
         dis.load_state_dict(torch.load(args.discriminator_path, map_location=device, weights_only=True))
     return dec, dis
-
-
-def atomic_save(value, path):
-    parent = os.path.dirname(path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    temporary_path = f"{path}.saving"
-    torch.save(value, temporary_path)
-    os.replace(temporary_path, path)
 
 
 def save_models(dec, dis, opt_dec, opt_dis, scaler, step_count):

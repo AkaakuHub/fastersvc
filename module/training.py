@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 
@@ -8,6 +10,15 @@ def step_scaled_optimizer(loss, optimizer, scaler, parameters, max_gradient_norm
     gradient_norm = nn.utils.clip_grad_norm_(parameters, max_gradient_norm)
     scaler.step(optimizer)
     return gradient_norm
+
+
+def atomic_save(value, path):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    temporary_path = f"{path}.saving"
+    torch.save(value, temporary_path)
+    os.replace(temporary_path, path)
 
 
 def learning_rate_at_step(initial_learning_rate, step, interval=100000, decay=0.5):

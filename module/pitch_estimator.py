@@ -11,7 +11,7 @@ class PitchEstimator(nn.Module):
                  internal_channels=512,
                  kernel_size=5,
                  dilations=[1, 3, 9, 1],
-                 output_channels=512,
+                 output_channels=384,
                  f0_min=10
                  ):
         super().__init__()

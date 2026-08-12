@@ -1,89 +1,81 @@
 import argparse
-import os 
+import os
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
 from tqdm import tqdm
 
 from module.dataset import Dataset
 from module.pitch_estimator import PitchEstimator
+from module.training import atomic_save, step_scaled_optimizer
 
-parser = argparse.ArgumentParser(description="train pitch estimation")
 
-parser.add_argument('--dataset-cache', default='dataset_cache')
-parser.add_argument('-pep', '--pitch_estimator_path', default='models/pitch_estimator.pt')
-parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
-parser.add_argument('-d', '--device', default='cuda')
-parser.add_argument('-e', '--epoch', default=60, type=int)
-parser.add_argument('-b', '--batch-size', default=16, type=int)
-parser.add_argument('-fp16', '--fp16', action='store_true')
-
+parser = argparse.ArgumentParser(description="distill WORLD pitch estimation")
+parser.add_argument("--dataset-cache", default="dataset_cache")
+parser.add_argument("--pitch-estimator-path", default="models/pitch_estimator.pt")
+parser.add_argument("--training-state-path", default="models/pitch-estimator-training.pt")
+parser.add_argument("--learning-rate", type=float, default=1e-4)
+parser.add_argument("--device", default="cuda")
+parser.add_argument("--steps", default=10000, type=int)
+parser.add_argument("--batch-size", default=32, type=int)
+parser.add_argument("--save-interval", default=500, type=int)
+parser.add_argument("--fp16", action="store_true")
 args = parser.parse_args()
 
 
-def load_or_init_models(device=torch.device('cpu')):
-    pe = PitchEstimator().to(device)
-    if os.path.exists(args.pitch_estimator_path):
-        pe.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device, weights_only=True))
-    return pe
-
-def save_models(pe):
-    print("Saving models...")
-    torch.save(pe.state_dict(), args.pitch_estimator_path)
-    print("Complete!")
+def save_training_state(model, optimizer, scaler, step_count):
+    atomic_save({
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scaler": scaler.state_dict(),
+        "step": step_count,
+    }, args.training_state_path)
+    atomic_save(model.state_dict(), args.pitch_estimator_path)
 
 
 device = torch.device(args.device)
-PE = load_or_init_models(device)
-
-ds = Dataset(args.dataset_cache)
-dl = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True)
-
+model = PitchEstimator().to(device)
+optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
-
-Opt = optim.AdamW(PE.parameters(), lr=args.learning_rate)
-
-weight = torch.ones(PE.output_channels)
-weight[0] = 0.02
-CrossEntropy = nn.CrossEntropyLoss(weight).to(device)
-
-# Training
 step_count = 0
 
-for epoch in range(args.epoch):
+if os.path.exists(args.training_state_path):
+    training_state = torch.load(args.training_state_path, map_location=device, weights_only=True)
+    model.load_state_dict(training_state["model"])
+    optimizer.load_state_dict(training_state["optimizer"])
+    scaler.load_state_dict(training_state["scaler"])
+    step_count = training_state["step"]
+elif os.path.exists(args.pitch_estimator_path):
+    model.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device, weights_only=True))
+
+dataset = Dataset(args.dataset_cache)
+loader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+loss_function = nn.CrossEntropyLoss().to(device)
+
+epoch = 0
+while step_count < args.steps:
     tqdm.write(f"Epoch #{epoch}")
-    bar = tqdm(total=len(ds))
-    for batch, (wave, f0, spk_id) in enumerate(dl):
-        N = wave.shape[0]
-        wave = wave.to(device) * torch.rand(N, 1, device=device) * 2
-        back_voice = wave.roll(1, dims=0)
-        noise_gain = torch.rand(wave.shape[0], 1, device=device)
-        back_voice_gain = torch.rand(wave.shape[0], 1, device=device) * 0.5
-        noise = torch.randn_like(wave)
-        wave = wave + noise_gain * noise + back_voice_gain * back_voice
-        f0 = f0.to(device)
-
-        Opt.zero_grad()
+    progress = tqdm(total=len(dataset))
+    for waveforms, pitch, _ in loader:
+        waveforms = waveforms.to(device)
+        pitch = pitch.to(device)
+        optimizer.zero_grad()
         with torch.amp.autocast(device.type, enabled=args.fp16):
-            logits = PE.logits(wave)
-            label = PE.freq2id(f0.squeeze(1))
-            loss = CrossEntropy(logits, label)
+            logits = model.logits(waveforms)
+            labels = model.freq2id(pitch.squeeze(1))
+            loss = loss_function(logits, labels)
 
-        scaler.scale(loss).backward()
-        scaler.step(Opt)
-
+        step_scaled_optimizer(loss, optimizer, scaler, model.parameters(), 1.0)
         scaler.update()
-
         step_count += 1
+        tqdm.write(f"Epoch {epoch}, Step {step_count}, loss: {loss.item():.6f}")
+        progress.update(waveforms.shape[0])
 
-        tqdm.write(f"Step {step_count}, loss: {loss.item()}")
+        if step_count % args.save_interval == 0:
+            save_training_state(model, optimizer, scaler, step_count)
+        if step_count >= args.steps:
+            break
+    epoch += 1
 
-        bar.update(N)
-
-        if batch % 1000 == 0:
-            save_models(PE)
-
-print("Training Complete!")
-save_models(PE)
+save_training_state(model, optimizer, scaler, step_count)
