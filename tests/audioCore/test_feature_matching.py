@@ -21,6 +21,15 @@ class FeatureMatchingTest(unittest.TestCase):
         self.assertEqual(list(index.parameters()), [])
         self.assertEqual(list(index.buffers())[0].shape, (1, 8, 16))
 
+    def test_onnx_index_uses_the_same_default_metric_as_conversion(self):
+        reference = torch.tensor([[[1.0, 2.0, 3.0, 4.0, 100.0], [0.0, 1.0, 1.0, 1.0, 0.0]]])
+        source = torch.tensor([[[1.0], [0.0]]])
+
+        expected = match_features(source, reference)
+        actual = IndexForOnnx(reference)(source)
+
+        self.assertTrue(torch.equal(actual, expected))
+
 
 if __name__ == "__main__":
     unittest.main()

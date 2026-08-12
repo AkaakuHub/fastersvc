@@ -9,5 +9,5 @@ class IndexForOnnx(nn.Module):
         super().__init__()
         self.register_buffer("index", index)
 
-    def forward(self, x, metrics='L2'):
+    def forward(self, x, metrics='cos'):
         return match_features(x, self.index, metrics=metrics)
