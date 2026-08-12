@@ -13,7 +13,7 @@ from module.audio import PerceptualLoudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
-from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer
+from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer, training_data_loader
 
 
 parser = argparse.ArgumentParser(description="train voice conversion model")
@@ -26,6 +26,7 @@ parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
 parser.add_argument('-d', '--device', default='cuda')
 parser.add_argument('--steps', default=600000, type=int)
 parser.add_argument('-b', '--batch-size', default=32, type=int)
+parser.add_argument('--workers', default=2 if os.name != 'nt' else 0, type=int)
 parser.add_argument('--save-interval', default=100, type=int)
 parser.add_argument('--training-state-path', default='models/decoder-training.pt')
 parser.add_argument('-fp16', '--fp16', action='store_true')
@@ -71,7 +72,7 @@ CE = ContentEncoder().to(device).eval()
 CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device, weights_only=True))
 
 ds = Dataset(args.dataset_cache)
-dl = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True)
+dl = training_data_loader(ds, args.batch_size, args.workers, device)
 
 scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
 
@@ -95,14 +96,16 @@ epoch = 0
 while step_count < args.steps:
     tqdm.write(f"Epoch #{epoch}")
     bar = tqdm(total=len(ds))
-    for batch, (wave, f0, spk_id) in enumerate(dl):
+    for batch_data in dl:
+        wave = batch_data[0]
+        f0 = batch_data[1]
         N = wave.shape[0]
         
         # train generator and speaker encoder
         OptDec.zero_grad()
         with torch.amp.autocast(device.type, enabled=args.fp16):
-            wave = wave.to(device)
-            f0 = f0.to(device)
+            wave = wave.to(device, non_blocking=True)
+            f0 = f0.to(device, non_blocking=True)
             wave, f0 = crop_aligned_batch(wave, f0)
             learning_rate = learning_rate_at_step(args.learning_rate, step_count)
             set_optimizer_learning_rate(OptDec, learning_rate)

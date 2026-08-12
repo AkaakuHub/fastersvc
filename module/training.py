@@ -4,6 +4,19 @@ import torch
 import torch.nn as nn
 
 
+def training_data_loader(dataset, batch_size, workers, device):
+    if workers < 0:
+        raise ValueError("data loader worker count must not be negative")
+    return torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=workers,
+        pin_memory=device.type == "cuda",
+        persistent_workers=workers > 0,
+    )
+
+
 def step_scaled_optimizer(loss, optimizer, scaler, parameters, max_gradient_norm):
     scaler.scale(loss).backward()
     scaler.unscale_(optimizer)

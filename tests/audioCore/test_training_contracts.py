@@ -11,10 +11,19 @@ from module.common import compute_f0, compute_f0_harvest
 from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
 from module.pitch_estimator import PitchEstimator
-from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, step_scaled_optimizer
+from module.training import atomic_save, crop_aligned_batch, learning_rate_at_step, step_scaled_optimizer, training_data_loader
 
 
 class TrainingContractsTest(unittest.TestCase):
+    def test_training_loader_prefetches_into_pinned_memory_for_cuda(self):
+        dataset = torch.utils.data.TensorDataset(torch.zeros(4, 1))
+
+        loader = training_data_loader(dataset, batch_size=2, workers=2, device=torch.device("cuda"))
+
+        self.assertEqual(loader.num_workers, 2)
+        self.assertTrue(loader.pin_memory)
+        self.assertTrue(loader.persistent_workers)
+
     def test_atomic_save_replaces_temporary_file(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "model.pt"

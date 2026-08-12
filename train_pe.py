@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from module.dataset import Dataset
 from module.pitch_estimator import PitchEstimator
-from module.training import atomic_save, step_scaled_optimizer
+from module.training import atomic_save, step_scaled_optimizer, training_data_loader
 
 
 parser = argparse.ArgumentParser(description="distill WORLD pitch estimation")
@@ -19,6 +19,7 @@ parser.add_argument("--learning-rate", type=float, default=1e-4)
 parser.add_argument("--device", default="cuda")
 parser.add_argument("--steps", default=10000, type=int)
 parser.add_argument("--batch-size", default=32, type=int)
+parser.add_argument("--workers", default=2 if os.name != "nt" else 0, type=int)
 parser.add_argument("--save-interval", default=500, type=int)
 parser.add_argument("--fp16", action="store_true")
 args = parser.parse_args()
@@ -50,7 +51,7 @@ elif os.path.exists(args.pitch_estimator_path):
     model.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device, weights_only=True))
 
 dataset = Dataset(args.dataset_cache)
-loader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+loader = training_data_loader(dataset, args.batch_size, args.workers, device)
 loss_function = nn.CrossEntropyLoss().to(device)
 
 epoch = 0
@@ -58,8 +59,8 @@ while step_count < args.steps:
     tqdm.write(f"Epoch #{epoch}")
     progress = tqdm(total=len(dataset))
     for waveforms, pitch, _ in loader:
-        waveforms = waveforms.to(device)
-        pitch = pitch.to(device)
+        waveforms = waveforms.to(device, non_blocking=True)
+        pitch = pitch.to(device, non_blocking=True)
         optimizer.zero_grad()
         with torch.amp.autocast(device.type, enabled=args.fp16):
             logits = model.logits(waveforms)

@@ -11,6 +11,7 @@ from module.dataset import Dataset
 from module.content_encoder import ContentEncoder
 from module.content_features import align_content_frames, select_hubert_content
 from module.audio import normalize_ssl_input
+from module.training import training_data_loader
 from transformers import HubertModel
 
 parser = argparse.ArgumentParser(description="distillation of hubert")
@@ -22,6 +23,7 @@ parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
 parser.add_argument('-d', '--device', default='cuda')
 parser.add_argument('-e', '--epoch', default=60, type=int)
 parser.add_argument('-b', '--batch-size', default=16, type=int)
+parser.add_argument('--workers', default=2 if os.name != 'nt' else 0, type=int)
 parser.add_argument('-fp16', '--fp16', action='store_true')
 
 args = parser.parse_args()
@@ -42,7 +44,7 @@ device = torch.device(args.device)
 CE = load_or_init_models(device)
 
 ds = Dataset(args.dataset_cache)
-dl = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True)
+dl = training_data_loader(ds, args.batch_size, args.workers, device)
 
 scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
 
@@ -56,9 +58,10 @@ step_count = 0
 for epoch in range(args.epoch):
     tqdm.write(f"Epoch #{epoch}")
     bar = tqdm(total=len(ds))
-    for batch, (wave, f0, spk_id) in enumerate(dl):
+    for batch, batch_data in enumerate(dl):
+        wave = batch_data[0]
         N = wave.shape[0]
-        wave = wave.to(device)
+        wave = wave.to(device, non_blocking=True)
 
         with torch.amp.autocast(device.type, enabled=args.fp16):
             with torch.no_grad():
