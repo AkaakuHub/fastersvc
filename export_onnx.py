@@ -74,7 +74,7 @@ torch.onnx.export(
 
 if args.index != 'NONE':
     print("Exporting Index")
-    vectors = torch.load(args.index)
+    vectors = torch.load(args.index, weights_only=True)
     index_matcher = IndexForOnnx(vectors)
     z = torch.randn(1, content_channels, frames_per_second)
     torch.onnx.export(

@@ -3,17 +3,17 @@ import os
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 from tqdm import tqdm
 
 from module.dataset import Dataset
-from module.loss import LogMelSpectrogramLoss
+from module.loss import MultiResolutionSTFTLoss
+from module.adversarial import discriminator_loss, generator_adversarial_loss, require_finite
 from module.pitch_estimator import PitchEstimator
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
-from module.common import energy, match_features
+from module.common import energy
 from module.discriminator import Discriminator
 
 
@@ -26,35 +26,53 @@ parser.add_argument('-dip', '--discriminator-path', default='models/discriminato
 parser.add_argument('-dep', '--decoder-path', default='models/decoder.pt')
 parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
 parser.add_argument('-d', '--device', default='cuda')
-parser.add_argument('-e', '--epoch', default=60, type=int)
+parser.add_argument('--steps', default=600000, type=int)
 parser.add_argument('-b', '--batch-size', default=16, type=int)
 parser.add_argument('-len', '--length', default=24000, type=int)
 parser.add_argument('-m', '--max-data', default=-1, type=int)
 parser.add_argument('--save-interval', default=100, type=int)
-parser.add_argument('-fp16', default=False, type=bool)
+parser.add_argument('--training-state-path', default='models/decoder-training.pt')
+parser.add_argument('-fp16', '--fp16', action='store_true')
 
 parser.add_argument('--weight-adv', default=1.0, type=float)
-parser.add_argument('--weight-mel', default=45.0, type=float)
+parser.add_argument('--weight-stft', default=1.0, type=float)
 
 args = parser.parse_args()
 
 WEIGHT_ADV = args.weight_adv
-WEIGHT_MEL = args.weight_mel
+WEIGHT_STFT = args.weight_stft
 
 def load_or_init_models(device=torch.device('cpu')):
     dec = Decoder().to(device)
     dis = Discriminator().to(device)
     if os.path.exists(args.decoder_path):
-        dec.load_state_dict(torch.load(args.decoder_path, map_location=device))
+        dec.load_state_dict(torch.load(args.decoder_path, map_location=device, weights_only=True))
     if os.path.exists(args.discriminator_path):
-        dis.load_state_dict(torch.load(args.discriminator_path, map_location=device))
+        dis.load_state_dict(torch.load(args.discriminator_path, map_location=device, weights_only=True))
     return dec, dis
 
 
-def save_models(dec, dis):
+def atomic_save(value, path):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    temporary_path = f"{path}.saving"
+    torch.save(value, temporary_path)
+    os.replace(temporary_path, path)
+
+
+def save_models(dec, dis, opt_dec, opt_dis, scaler, step_count):
     print("Saving models...")
-    torch.save(dec.state_dict(), args.decoder_path)
-    torch.save(dis.state_dict(), args.discriminator_path)
+    atomic_save({
+        "decoder": dec.state_dict(),
+        "discriminator": dis.state_dict(),
+        "decoder_optimizer": opt_dec.state_dict(),
+        "discriminator_optimizer": opt_dis.state_dict(),
+        "scaler": scaler.state_dict(),
+        "step": step_count,
+    }, args.training_state_path)
+    atomic_save(dec.state_dict(), args.decoder_path)
+    atomic_save(dis.state_dict(), args.discriminator_path)
     print("Complete!")
 
 
@@ -68,24 +86,32 @@ device = torch.device(args.device)
 
 Dec, Dis = load_or_init_models(device)
 PE = PitchEstimator().to(device).eval()
-PE.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device))
+PE.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device, weights_only=True))
 CE = ContentEncoder().to(device).eval()
-CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device))
+CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device, weights_only=True))
 
 ds = Dataset(args.dataset_cache)
 dl = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True)
 
-scaler = torch.cuda.amp.GradScaler(enabled=args.fp16)
+scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
 
 OptDec = optim.AdamW(Dec.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
 OptDis = optim.AdamW(Dis.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
 
-logmel_loss = LogMelSpectrogramLoss().to(device)
+spectral_loss = MultiResolutionSTFTLoss().to(device)
 
-# Training
 step_count = 0
+if os.path.exists(args.training_state_path):
+    training_state = torch.load(args.training_state_path, map_location=device, weights_only=True)
+    Dec.load_state_dict(training_state["decoder"])
+    Dis.load_state_dict(training_state["discriminator"])
+    OptDec.load_state_dict(training_state["decoder_optimizer"])
+    OptDis.load_state_dict(training_state["discriminator_optimizer"])
+    scaler.load_state_dict(training_state["scaler"])
+    step_count = training_state["step"]
 
-for epoch in range(args.epoch):
+epoch = 0
+while step_count < args.steps:
     tqdm.write(f"Epoch #{epoch}")
     bar = tqdm(total=len(ds))
     for batch, (wave, f0, spk_id) in enumerate(dl):
@@ -93,28 +119,22 @@ for epoch in range(args.epoch):
         
         # train generator and speaker encoder
         OptDec.zero_grad()
-        with torch.cuda.amp.autocast(enabled=args.fp16):
+        with torch.amp.autocast(device.type, enabled=args.fp16):
             wave = wave.to(device)
-            wave = (wave / wave.abs().max(dim=1, keepdim=True).values) * torch.rand(N, 1, device=device)
             f0 = f0.to(device)
 
-            z = CE.encode(wave)
+            with torch.no_grad():
+                z = CE.encode(wave)
             e = energy(wave)
-            z = match_features(z, z).detach()
             fake = Dec.synthesize(z, f0, e)
+            require_finite("generated waveform", fake)
 
-            # remove nan
-            fake[fake.isnan()] = 0
-
-            loss_adv = 0
-            loss_feat = 0
             logits, _ = Dis(center(fake))
-            for logit in logits:
-                logit[logit.isnan()] = 0
-                loss_adv += (logit ** 2).mean() / len(logits)
+            loss_adv = generator_adversarial_loss(logits)
 
-            loss_mel = logmel_loss(fake, wave)
-            loss_g = loss_adv * WEIGHT_ADV + loss_mel * WEIGHT_MEL
+            loss_stft = spectral_loss(fake, wave)
+            loss_g = loss_adv * WEIGHT_ADV + loss_stft * WEIGHT_STFT
+            require_finite("generator loss", loss_g)
 
         scaler.scale(loss_g).backward()
         nn.utils.clip_grad_norm_(Dec.parameters(), 1.0)
@@ -123,16 +143,11 @@ for epoch in range(args.epoch):
         # train discriminator
         fake = fake.detach()
         OptDis.zero_grad()
-        with torch.cuda.amp.autocast(enabled=args.fp16):
-            loss_d = 0
-            logits, _ = Dis(center(wave))
-            for logit in logits:
-                logit[logit.isnan()] = 0
-                loss_d += (logit ** 2).mean() / len(logits)
-            logits, _ = Dis(center(fake))
-            for logit in logits:
-                logit[logit.isnan()] = 1
-                loss_d += ((logit - 1) ** 2).mean() / len(logits)
+        with torch.amp.autocast(device.type, enabled=args.fp16):
+            real_logits, _ = Dis(center(wave))
+            generated_logits, _ = Dis(center(fake))
+            loss_d = discriminator_loss(real_logits, generated_logits)
+            require_finite("discriminator loss", loss_d)
 
         scaler.scale(loss_d).backward()
         nn.utils.clip_grad_norm_(Dis.parameters(), 1.0)
@@ -142,12 +157,15 @@ for epoch in range(args.epoch):
 
         step_count += 1
         
-        tqdm.write(f"Epoch {epoch}, Step {step_count}, Dis.: {loss_d.item():.4f}, Adv.: {loss_adv.item():.4f}, Mel.: {loss_mel.item():.4f}")
+        tqdm.write(f"Epoch {epoch}, Step {step_count}, Dis.: {loss_d.item():.4f}, Adv.: {loss_adv.item():.4f}, STFT: {loss_stft.item():.4f}")
 
         bar.update(N)
 
-        if batch % args.save_interval == 0:
-            save_models(Dec, Dis)
+        if step_count % args.save_interval == 0:
+            save_models(Dec, Dis, OptDec, OptDis, scaler, step_count)
+        if step_count >= args.steps:
+            break
+    epoch += 1
 
 print("Training Complete!")
-save_models(Dec, Dis)
+save_models(Dec, Dis, OptDec, OptDis, scaler, step_count)

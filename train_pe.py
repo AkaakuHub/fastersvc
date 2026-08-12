@@ -3,9 +3,7 @@ import os
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-import torchaudio
 
 from tqdm import tqdm
 
@@ -22,7 +20,7 @@ parser.add_argument('-e', '--epoch', default=60, type=int)
 parser.add_argument('-b', '--batch-size', default=16, type=int)
 parser.add_argument('-len', '--length', default=48000, type=int)
 parser.add_argument('-m', '--max-data', default=-1, type=int)
-parser.add_argument('-fp16', default=False, type=bool)
+parser.add_argument('-fp16', '--fp16', action='store_true')
 parser.add_argument('--algorithm', default='harvest', type=str, choices=['harvest', 'dio'])
 
 args = parser.parse_args()
@@ -31,7 +29,7 @@ args = parser.parse_args()
 def load_or_init_models(device=torch.device('cpu')):
     pe = PitchEstimator().to(device)
     if os.path.exists(args.pitch_estimator_path):
-        pe.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device))
+        pe.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device, weights_only=True))
     return pe
 
 def save_models(pe):
@@ -46,7 +44,7 @@ PE = load_or_init_models(device)
 ds = Dataset(args.dataset_cache)
 dl = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True)
 
-scaler = torch.cuda.amp.GradScaler(enabled=args.fp16)
+scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
 
 Opt = optim.AdamW(PE.parameters(), lr=args.learning_rate)
 
@@ -71,7 +69,7 @@ for epoch in range(args.epoch):
         f0 = f0.to(device)
 
         Opt.zero_grad()
-        with torch.cuda.amp.autocast(enabled=args.fp16):
+        with torch.amp.autocast(device.type, enabled=args.fp16):
             logits = PE.logits(wave)
             label = PE.freq2id(f0.squeeze(1))
             loss = CrossEntropy(logits, label)

@@ -1,5 +1,3 @@
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,6 +36,17 @@ def energy(wave,
 # metrics: one of ['IP', 'L2', 'cos'], 'IP' means innner product, 'L2' means euclid distance, 'cos' means cosine similarity
 # Output: [BatchSize, Channels, Length]
 def match_features(source, reference, k=4, alpha=0.0, metrics='cos'):
+    if source.ndim != 3 or reference.ndim != 3:
+        raise ValueError("source and reference must have shape [batch, channels, frames]")
+    if source.shape[0] != reference.shape[0] or source.shape[1] != reference.shape[1]:
+        raise ValueError("source and reference batch and channel dimensions must match")
+    if not 1 <= k <= reference.shape[2]:
+        raise ValueError("k must not exceed the number of reference frames")
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if metrics not in {'IP', 'L2', 'cos'}:
+        raise ValueError(f"unsupported feature metric: {metrics}")
+
     input_data = source
 
     source = source.transpose(1, 2)
@@ -46,7 +55,7 @@ def match_features(source, reference, k=4, alpha=0.0, metrics='cos'):
         sims = torch.bmm(source, reference.transpose(1, 2))
     elif metrics == 'L2':
         sims = -torch.cdist(source, reference)
-    elif metrics == 'cos':
+    else:
         reference_norm = torch.norm(reference, dim=2, keepdim=True) + 1e-6
         source_norm = torch.norm(source, dim=2, keepdim=True) + 1e-6
         sims = torch.bmm(source / source_norm, (reference / reference_norm).transpose(1, 2))
@@ -55,54 +64,6 @@ def match_features(source, reference, k=4, alpha=0.0, metrics='cos'):
     result = torch.stack([reference[n][best.indices[n]] for n in range(source.shape[0])], dim=0).mean(dim=2)
     result = result.transpose(1, 2)
     return result * (1-alpha) + input_data * alpha
-
-
-# Oscillate harmonic signal for realtime inferencing
-#
-# Inputs ---
-# f0: [BatchSize, 1, Frames]
-# phase: scaler or [BatchSize, NumHarmonics, 1]
-#
-# Outputs ---
-# (signals, phase)
-# signals: [BatchSize, NumHarmonics, Length]
-# phase: [BatchSize, NumHarmonics Length]
-#
-# phase's range is 0 to 1, multiply 2 * pi if you need radians
-# length = Frames * frame_size
-def oscillate_harmonics(f0,
-                        phase=0,
-                        frame_size=480,
-                        sample_rate=24000,
-                        num_harmonics=0,
-                        begin_point=0,
-                        min_frequency=10.0):
-    N = f0.shape[0]
-    Nh = num_harmonics + 1
-    Lf = f0.shape[2]
-    Lw = Lf * frame_size
-
-    device = f0.device
-
-    # generate frequency of harmonics
-    mul = (torch.arange(Nh, device=device) + 1).unsqueeze(0).unsqueeze(2).expand(N, Nh, Lf)
-    fs = f0 * mul
-
-    # change length to wave's
-    fs = F.interpolate(fs, Lw, mode='linear')
-
-    # unvoiced / voiced mask
-    uv = F.interpolate((fs >= min_frequency).to(torch.float), Lw, mode='linear')
-
-    # generate harmonics
-    I = torch.cumsum(fs / sample_rate, dim=2) # numerical integration
-    I = I - I[:, :, begin_point].unsqueeze(2)
-    phi = (I + phase) % 1 # new phase
-    theta = 2 * math.pi * phi # convert to radians
-
-    harmonics = torch.sin(theta) * uv
-
-    return harmonics, phi
 
 
 # Dlilated Causal Convolution
@@ -161,7 +122,7 @@ class ResBlock(nn.Module):
         return x + res
 
 
-def compute_f0_dio(wf, sample_rate=24000, segment_size=480, f0_min=20, f0_max=20000):
+def compute_f0_dio(wf, sample_rate=24000, segment_size=480, f0_min=50, f0_max=1100):
     if wf.ndim == 1:
         device = wf.device
         signal = wf.detach().cpu().numpy()
@@ -176,12 +137,12 @@ def compute_f0_dio(wf, sample_rate=24000, segment_size=480, f0_min=20, f0_max=20
         return f0
     elif wf.ndim == 2:
         waves = wf.split(1, dim=0)
-        pitchs = [compute_f0_dio(wave[0], sample_rate, segment_size) for wave in waves]
+        pitchs = [compute_f0_dio(wave[0], sample_rate, segment_size, f0_min, f0_max) for wave in waves]
         pitchs = torch.stack(pitchs, dim=0)
         return pitchs
 
 
-def compute_f0_harvest(wf, sample_rate=24000, segment_size=480, f0_min=20, f0_max=20000):
+def compute_f0_harvest(wf, sample_rate=24000, segment_size=480, f0_min=50, f0_max=1100):
     if wf.ndim == 1:
         device = wf.device
         signal = wf.detach().cpu().numpy()
@@ -195,7 +156,7 @@ def compute_f0_harvest(wf, sample_rate=24000, segment_size=480, f0_min=20, f0_ma
         return f0
     elif wf.ndim == 2:
         waves = wf.split(1, dim=0)
-        pitchs = [compute_f0_dio(wave[0], sample_rate, segment_size) for wave in waves]
+        pitchs = [compute_f0_harvest(wave[0], sample_rate, segment_size, f0_min, f0_max) for wave in waves]
         pitchs = torch.stack(pitchs, dim=0)
         return pitchs
 
@@ -207,5 +168,6 @@ def compute_f0(wf, sample_rate=24000, segment_size=480, algorithm='harvest'):
         pitchs = compute_f0_harvest(wf, 16000)
     elif algorithm == 'dio':
         pitchs = compute_f0_dio(wf, 16000)
+    else:
+        raise ValueError(f"unsupported pitch estimation algorithm: {algorithm}")
     return F.interpolate(pitchs, l // segment_size, mode='linear')
-

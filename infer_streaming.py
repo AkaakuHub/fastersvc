@@ -1,17 +1,11 @@
 import argparse
-import math
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchaudio
-from torchaudio.functional import resample, gain
+from torchaudio.functional import gain
 
 import numpy as np
 import pyaudio
 
 from module.convertor import Convertor
-from module.common import energy, match_features, oscillate_harmonics
 
 
 FRAME_SIZE=480
@@ -41,6 +35,9 @@ convertor = Convertor()
 convertor.load(args.models)
 convertor.to(device)
 
+if args.sample_rate != INTERNAL_SR:
+    raise ValueError(f"--sample-rate must be {INTERNAL_SR}; chunk-wise resampling corrupts stream boundaries")
+
 if args.index == 'NONE':
     print("Loading target...")
     wf, sr = torchaudio.load(args.target)
@@ -51,7 +48,7 @@ if args.index == 'NONE':
     tgt = convertor.encode_target(wf)
 else:
     print("Loading index...")
-    tgt = torch.load(args.index).to(device)
+    tgt = torch.load(args.index, weights_only=True).to(device)
 
 audio = pyaudio.PyAudio()
 
@@ -76,8 +73,6 @@ stream_loopback = audio.open(
 
 BUFFER_SIZE = args.buffer * args.chunk
 CHUNK_SIZE = args.chunk
-N_HARM = convertor.decoder.num_harmonics
-
 # initialize buffer
 buffer = convertor.init_buffer(BUFFER_SIZE, device)
 
@@ -99,7 +94,7 @@ while True:
             )
     chunk = gain(chunk, args.output_gain)
 
-    chunk = chunk.cpu().numpy() * 32768
+    chunk = chunk.clamp(-1, 1).cpu().numpy() * 32767
     chunk = chunk.astype(np.int16).tobytes()
     stream_output.write(chunk)
     if stream_loopback is not None:

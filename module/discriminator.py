@@ -70,10 +70,10 @@ class DiscriminatorS(nn.Module):
         super().__init__()
         norm_f = nn.utils.weight_norm if use_spectral_norm == False else nn.utils.spectral_norm
 
-        if scale != 1:
+        if scale == 1:
             self.pool = nn.Identity()
         else:
-            self.pool = nn.AvgPool1d(scale*2, scale)
+            self.pool = nn.AvgPool1d(scale * 2, scale, padding=scale)
 
         c = channels
         g = 1
@@ -81,7 +81,7 @@ class DiscriminatorS(nn.Module):
         for _ in range(num_layers):
             g = min(g * 2, max_groups)
             c_next = min(c * 2, max_channels)
-            convs.append(nn.Conv1d(c, c_next, 41, 2, 20, groups=2))
+            convs.append(nn.Conv1d(c, c_next, 41, 2, 20, groups=g))
             c = c_next
 
         self.convs = nn.ModuleList([norm_f(c) for c in convs])
@@ -120,8 +120,8 @@ class MultiScaleDiscriminator(nn.Module):
 
 class Discriminator(nn.Module):
     def __init__(self,
-                 scales=[1, 2, 3],
-                 periods=[],
+                 scales=(1, 2, 3),
+                 periods=(),
                  mpd_num_layers=5,
                  msd_num_layers=7,
                  mpd_channels=16,

@@ -12,7 +12,7 @@ from module.dataset import Dataset
 from module.content_encoder import ContentEncoder
 
 def shuffle(tensor, dim):
-    indices = torch.randperm(tensor.size(dim))
+    indices = torch.randperm(tensor.size(dim), device=tensor.device)
     shuffled_tensor = tensor.index_select(dim, indices)
     return shuffled_tensor
 
@@ -29,7 +29,7 @@ args = parser.parse_args()
 
 device = torch.device(args.device) # use cpu because content encoder is lightweight.
 CE = ContentEncoder().to(device).eval()
-CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device))
+CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device, weights_only=True))
 
 features = []
 total_length = 0
@@ -38,7 +38,7 @@ ds = Dataset(args.dataset_cache)
 dl = torch.utils.data.DataLoader(ds, batch_size=1, shuffle=True)
 
 print("Extracting...")
-for i, wave in enumerate(dl):
+for wave, _, _ in dl:
     feat = CE.encode(wave.to(device)).cpu()[:, :, ::args.stride]
     total_length += feat.shape[2]
     features.append(feat)

@@ -19,7 +19,7 @@ class PitchEstimator(nn.Module):
         self.n_fft = n_fft
         self.hop_size = hop_size
         self.output_channels = output_channels
-        self.f0_min = 10
+        self.f0_min = f0_min
 
         self.input_layer = nn.Conv1d(n_fft // 2 + 1, internal_channels, 1)
 

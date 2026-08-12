@@ -32,6 +32,7 @@ dataset_files = []
 support_exts = ['mp3', 'wav', 'ogg']
 for e in support_exts:
     dataset_files += list(input_parent.glob(f"**/*.{e}"))
+dataset_files.sort()
 if args.max_files != -1:
     dataset_files = dataset_files[:args.max_files]
 
@@ -65,7 +66,8 @@ for path in tqdm(dataset_files):
         if parent_path not in parent_paths:
             parent_paths.append(parent_path)
         spk_id = parent_paths.index(parent_path)
-        spk_id = min(spk_id, args.num_speakers)
+        if spk_id >= args.num_speakers:
+            raise ValueError(f"speaker count exceeds --num-speakers={args.num_speakers}")
 
         # save
         output_pt_path = output_parent / f"{counter}.pt"

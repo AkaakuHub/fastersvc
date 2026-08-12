@@ -1,59 +1,30 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchaudio
 
 
 def safe_log(x):
     return torch.log(x.clamp_min(1e-6))
 
 
-class MultiScaleSTFTLoss(nn.Module):
+class MultiResolutionSTFTLoss(nn.Module):
     def __init__(
             self,
-            scales=[16, 32, 64, 128, 256, 512]
+            fft_sizes=(64, 128, 256, 512, 1024, 2048),
             ):
         super().__init__()
-        self.scales = scales
+        self.fft_sizes = fft_sizes
 
     def forward(self, x, y):
-        loss = 0
-        num_scales = len(self.scales)
-        for s in self.scales:
-            hop_length = s
-            n_fft = s * 4
+        x = x.float()
+        y = y.float()
+        loss = x.new_tensor(0.0)
+        for n_fft in self.fft_sizes:
+            hop_length = n_fft // 4
             window = torch.hann_window(n_fft, device=x.device)
             x_spec = torch.stft(x, n_fft, hop_length, return_complex=True, window=window).abs()
             y_spec = torch.stft(y, n_fft, hop_length, return_complex=True, window=window).abs()
-            loss += ((x_spec - y_spec) ** 2).mean() + (safe_log(x_spec) - safe_log(y_spec)).abs().mean()
-        return loss / num_scales
-
-
-class LogMelSpectrogramLoss(nn.Module):
-    def __init__(
-            self,
-            sample_rate=24000,
-            n_fft=1024,
-            hop_length=256,
-            n_mels=128
-            ):
-        super().__init__()
-        self.to_mel = torchaudio.transforms.MelSpectrogram(
-                sample_rate,
-                n_fft,
-                hop_length=hop_length,
-                n_mels=n_mels)
-    
-    def forward(self, x, y):
-        x = x.to(torch.float)
-        y = y.to(torch.float)
-        
-        x = safe_log(self.to_mel(x))
-        y = safe_log(self.to_mel(y))
-
-        x[x.isnan()] = 0
-        x[x.isinf()] = 0
-        y[y.isnan()] = 0
-        y[y.isinf()] = 0
-
-        return (x - y).abs().mean()
+            spectral_convergence = torch.linalg.vector_norm(x_spec - y_spec) / torch.linalg.vector_norm(y_spec).clamp_min(1e-6)
+            log_magnitude = (safe_log(x_spec) - safe_log(y_spec)).abs().mean()
+            loss += spectral_convergence + log_magnitude
+        return loss / len(self.fft_sizes)

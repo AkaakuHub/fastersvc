@@ -7,7 +7,8 @@ import torch.nn.functional as F
 from .content_encoder import ContentEncoder
 from .pitch_estimator import PitchEstimator
 from .decoder import Decoder
-from .common import energy, match_features, compute_f0, oscillate_harmonics
+from .common import energy, match_features, compute_f0
+from .excitation import generate_excitation
 
 
 # for realtime inferencing
@@ -18,13 +19,12 @@ class Convertor(nn.Module):
         self.pitch_estimator = PitchEstimator().eval()
         self.decoder = Decoder().eval()
         self.frame_size = self.decoder.frame_size
-        self.num_harmonics = self.decoder.num_harmonics
         self.sample_rate = self.decoder.sample_rate
 
     def load(self, path='./models', device='cpu'):
-        self.pitch_estimator.load_state_dict(torch.load(os.path.join(path, 'pitch_estimator.pt'), map_location=device))
-        self.content_encoder.load_state_dict(torch.load(os.path.join(path, 'content_encoder.pt'), map_location=device))
-        self.decoder.load_state_dict(torch.load(os.path.join(path, 'decoder.pt'), map_location=device))
+        self.pitch_estimator.load_state_dict(torch.load(os.path.join(path, 'pitch_estimator.pt'), map_location=device, weights_only=True))
+        self.content_encoder.load_state_dict(torch.load(os.path.join(path, 'content_encoder.pt'), map_location=device, weights_only=True))
+        self.decoder.load_state_dict(torch.load(os.path.join(path, 'decoder.pt'), map_location=device, weights_only=True))
 
     def encode_target(self, wave, stride=4):
         tgt = self.content_encoder.encode(wave)
@@ -50,14 +50,12 @@ class Convertor(nn.Module):
     @torch.inference_mode()
     def init_buffer(self, buffer_size, device='cpu'):
         audio_buffer = torch.zeros(1, buffer_size, device=device)
-        phase_buffer = torch.zeros(1, self.num_harmonics + 1, 1, device=device)
+        phase_buffer = torch.zeros(1, 1, 1, device=device)
         return audio_buffer, phase_buffer
     
     # convert voice with buffer for realtime inferencing
     @torch.inference_mode()
     def convert_rt(self, chunk, buffer, tgt, pitch_shift, k=4, alpha=0, pitch_estimation='default'):
-        N = chunk.shape[0]
-        device = chunk.device
         k = int(k)
 
         # extpand buffer variables
@@ -65,11 +63,8 @@ class Convertor(nn.Module):
 
         # buffer size and chunk size
         buffer_size = audio_buffer.shape[1]
-        chunk_size = chunk.shape[1]
-
         # concateante audio buffer and chunk
         x = torch.cat([audio_buffer, chunk], dim=1)
-        waveform_length = x.shape[1]
 
         # encode content, estimate energy, estimate pitch
         z = self.content_encoder.encode(x)
@@ -87,24 +82,15 @@ class Convertor(nn.Module):
         scale += pitch_shift
         p = 440 * 2 ** (scale / 12)
 
-        # oscillate harmonics and noise
-        harmonics, phase_out = oscillate_harmonics(
+        source_signal, new_phase_buffer = generate_excitation(
                 p,
                 phase_buffer,
                 self.frame_size,
                 self.sample_rate,
-                self.num_harmonics,
-                begin_point=buffer_size-1)
-
-        noise = torch.randn(N, 1, waveform_length, device=device)
-
-        src = torch.cat([harmonics, noise], dim=1)
-
-        # calculate next phase buffer
-        new_phase_buffer = phase_out[:, :, -1].unsqueeze(2)
+                alignment_sample=buffer_size)
         
         # synthesize new voice
-        y = self.decoder(z, p, e, src)
+        y = self.decoder(z, p, e, source_signal)
 
         # return new voice and shift left
         left_shift = self.frame_size * 3

@@ -3,7 +3,6 @@ import os
 import glob
 
 import torch
-import torch.nn.functional as F
 import torchaudio
 from torchaudio.functional import resample
 
@@ -20,10 +19,10 @@ parser.add_argument('-t', '--target', default='./target.wav')
 parser.add_argument('-d', '--device', default='cpu')
 parser.add_argument('-a', '--alpha', default=0, type=float)
 parser.add_argument('-idx', '--index', default='NONE')
-parser.add_argument('--normalize', default=False, type=bool)
+parser.add_argument('--normalize', action='store_true')
 parser.add_argument('-pe', '--pitch-estimation', default='default', choices=['default', 'dio', 'harvest'])
 parser.add_argument('-c', '--chunk', default=24000, type=int) # should be n * 320
-parser.add_argument('-nc', '--no-chunking', default=False, type=bool)
+parser.add_argument('-nc', '--no-chunking', action='store_true')
 parser.add_argument('-b', '--buffer', default=1, type=int)
 
 args = parser.parse_args()
@@ -48,7 +47,7 @@ if args.index == 'NONE':
     tgt = convertor.encode_target(wf)
 else:
     print("Loading index...")
-    tgt = torch.load(args.index).to(device)
+    tgt = torch.load(args.index, weights_only=True).to(device)
 
 support_formats = ['wav', 'ogg', 'mp3']
 paths = []
@@ -61,6 +60,7 @@ for i, path in enumerate(paths):
     wf, sr = torchaudio.load(path)
     wf = resample(wf, sr, 24000)
     wf = wf.mean(dim=0, keepdim=True)
+    original_length = wf.shape[1]
     if args.no_chunking:
         wf = convertor.convert(wf.to(device), tgt, args.pitch_shift, alpha=args.alpha,
                                pitch_estimation_algorithm=args.pitch_estimation)
@@ -69,10 +69,14 @@ for i, path in enumerate(paths):
         chunks = torch.split(wf, args.chunk, dim=1)
         results = []
         buffer = convertor.init_buffer(buffer_size, device=device)
-        for chunk in tqdm(chunks):
+        padded_chunks = []
+        for chunk in chunks:
             if chunk.shape[1] < args.chunk:
                 pad_len = args.chunk - chunk.shape[1]
                 chunk = torch.cat([chunk, torch.zeros(1, pad_len)], dim=1)
+            padded_chunks.append(chunk)
+        padded_chunks.append(torch.zeros(1, args.chunk))
+        for chunk in tqdm(padded_chunks):
             converted_chunk, buffer = convertor.convert_rt(
                     chunk.to(device),
                     buffer,
@@ -83,6 +87,10 @@ for i, path in enumerate(paths):
                     )
             results.append(converted_chunk.cpu())
         wf = torch.cat(results, dim=1)
-        wf = wf[:, (left_shift):]
+        wf = wf[:, left_shift:left_shift + original_length]
+    if args.normalize:
+        peak = wf.abs().max().clamp_min(1e-6)
+        wf = wf * (0.99 / peak)
+    wf = wf.clamp(-1, 1)
     file_name = f"{os.path.splitext(os.path.basename(path))[0]}"
     torchaudio.save(os.path.join(args.outputs, f"{file_name}.wav"), src=wf, sample_rate=24000)

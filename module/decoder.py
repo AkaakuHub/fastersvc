@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .common import DCC, oscillate_harmonics
+from .common import DCC
+from .excitation import generate_excitation
 
 
 class FiLM(nn.Module):
@@ -78,22 +79,20 @@ class Upsample(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(self,
-                 channels=[384, 192, 96, 48, 24],
-                 factors=[2, 3, 4, 4, 5],
-                 cond_channels=[384, 192, 96, 48, 24],
-                 num_harmonics=0, 
+                 channels=(384, 192, 96, 48, 24),
+                 factors=(2, 3, 4, 4, 5),
+                 cond_channels=(384, 192, 96, 48, 24),
                  content_channels=768,
                  sample_rate=24000,
                  frame_size=480,
                  ):
         super().__init__()
-        self.num_harmonics = num_harmonics
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.content_channels = content_channels
 
         # initialize downsample layers
-        self.down_input = nn.Conv1d(num_harmonics + 2, cond_channels[-1], 1)
+        self.down_input = nn.Conv1d(1, cond_channels[-1], 1)
         self.downs = nn.ModuleList([])
         cond = list(reversed(cond_channels))
         cond_next = cond[1:] + [cond[-1]]
@@ -109,25 +108,21 @@ class Decoder(nn.Module):
         # initialize upsample layers
         self.ups = nn.ModuleList([])
         up = channels
-        up_next = channels[1:] + [channels[-1]]
+        up_next = list(channels[1:]) + [channels[-1]]
         for u, u_n, c_n, f in zip(up, up_next, reversed(cond_next), factors):
             self.ups.append(Upsample(u, u_n, c_n, f))
         # output layer
         self.output_layer = DCC(channels[-1], 1, 3, 1)
 
     def generate_source(self, p):
-        L = p.shape[2] * self.frame_size
-        N = p.shape[0]
-        device = p.device
-
-        # generate harmonics
-        harmonics, _ = oscillate_harmonics(p, 0, self.frame_size, self.sample_rate, self.num_harmonics)
-        # generate noise
-        noise = torch.randn(N, 1, L, device=device)
-        # concatenate
-        source_signals = torch.cat([harmonics, noise], dim=1)
-
-        return source_signals
+        initial_phase = torch.rand(p.shape[0], 1, 1, device=p.device, dtype=p.dtype)
+        source_signal, _ = generate_excitation(
+            p,
+            phase=initial_phase,
+            frame_size=self.frame_size,
+            sample_rate=self.sample_rate,
+        )
+        return source_signal
 
     def forward(self, x, p, e, source_signals):
 
@@ -147,7 +142,7 @@ class Decoder(nn.Module):
             x = u(x, s)
 
         x = self.output_layer(x)
-        x = x.squeeze(1)
+        x = torch.tanh(x).squeeze(1)
         return x
 
     def synthesize(self, x, p, e):
