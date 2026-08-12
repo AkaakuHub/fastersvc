@@ -166,11 +166,13 @@ def compute_f0_harvest(wf, sample_rate=24000, segment_size=480, f0_min=50, f0_ma
 
 def compute_f0(wf, sample_rate=24000, segment_size=480, algorithm='harvest'):
     l = wf.shape[1]
-    wf = resample(wf, sample_rate, 16000)
+    world_sample_rate = 16000
+    world_segment_size = round(segment_size * world_sample_rate / sample_rate)
+    wf = resample(wf, sample_rate, world_sample_rate)
     if algorithm == 'harvest':
-        pitchs = compute_f0_harvest(wf, 16000)
+        pitchs = compute_f0_harvest(wf, world_sample_rate, world_segment_size)
     elif algorithm == 'dio':
-        pitchs = compute_f0_dio(wf, 16000)
+        pitchs = compute_f0_dio(wf, world_sample_rate, world_segment_size)
     else:
         raise ValueError(f"unsupported pitch estimation algorithm: {algorithm}")
     return F.interpolate(pitchs, l // segment_size, mode='linear')

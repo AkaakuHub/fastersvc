@@ -10,7 +10,6 @@ from tqdm import tqdm
 from module.dataset import Dataset
 from module.loss import MultiResolutionSTFTLoss
 from module.adversarial import discriminator_loss, generator_adversarial_loss, require_finite
-from module.pitch_estimator import PitchEstimator
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.common import energy
@@ -21,7 +20,6 @@ parser = argparse.ArgumentParser(description="train voice conversion model")
 
 parser.add_argument('--dataset-cache', default='dataset_cache')
 parser.add_argument('-cep', '--content-encoder-path', default='models/content_encoder.pt')
-parser.add_argument('-pep', '--pitch-estimator-path', default='models/pitch_estimator.pt')
 parser.add_argument('-dip', '--discriminator-path', default='models/discriminator.pt')
 parser.add_argument('-dep', '--decoder-path', default='models/decoder.pt')
 parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
@@ -83,8 +81,6 @@ def center(wave, length=16000):
 device = torch.device(args.device)
 
 Dec, Dis = load_or_init_models(device)
-PE = PitchEstimator().to(device).eval()
-PE.load_state_dict(torch.load(args.pitch_estimator_path, map_location=device, weights_only=True))
 CE = ContentEncoder().to(device).eval()
 CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device, weights_only=True))
 

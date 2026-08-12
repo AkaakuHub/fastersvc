@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from module.adversarial import discriminator_loss, generator_adversarial_loss
-from module.common import compute_f0_harvest
+from module.common import compute_f0, compute_f0_harvest
 from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
 
@@ -43,6 +43,16 @@ class TrainingContractsTest(unittest.TestCase):
         result = compute_f0_harvest(waveforms, sample_rate=16000, segment_size=320)
         self.assertEqual(harvest.call_count, 2)
         self.assertEqual(result.shape, (2, 1, 5))
+
+    @patch("module.common.compute_f0_harvest")
+    def test_f0_frame_size_tracks_resampled_sample_rate(self, harvest):
+        harvest.return_value = torch.ones(1, 1, 5)
+        waveform = torch.zeros(1, 2400)
+
+        result = compute_f0(waveform, sample_rate=24000, segment_size=480)
+
+        self.assertEqual(harvest.call_args.args[1:], (16000, 320))
+        self.assertEqual(result.shape, (1, 1, 5))
 
 
 if __name__ == "__main__":
