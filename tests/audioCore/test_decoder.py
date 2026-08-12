@@ -29,6 +29,17 @@ class DecoderTest(unittest.TestCase):
         self.assertEqual(waveform.shape, (1, 960))
         self.assertLessEqual(waveform.abs().max().item(), 1)
 
+    def test_uses_the_declared_channel_count_for_each_upsample_block(self):
+        decoder = Decoder(
+            channels=[16, 12, 8, 4],
+            cond_channels=[16, 12, 8, 4],
+            content_channels=8,
+        )
+
+        output_channels = [block.residual.out_channels for block in decoder.ups]
+
+        self.assertEqual(output_channels, [16, 12, 8, 4])
+
     def test_rejects_excitation_that_differs_from_content_timing(self):
         decoder = Decoder(
             channels=[16, 12, 8, 4],

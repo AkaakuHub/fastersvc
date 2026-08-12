@@ -139,10 +139,18 @@ class Decoder(nn.Module):
 
         # initialize upsample layers
         self.ups = nn.ModuleList([])
-        up = channels
-        up_next = list(channels[1:]) + [channels[-1]]
-        for u, u_n, c_n, f in zip(up, up_next, reversed(cond_next), factors):
-            self.ups.append(Upsample(u, u_n, c_n, f))
+        up_inputs = [channels[0]] + list(channels[:-1])
+        for input_channels, output_channels, condition_channels, factor in zip(
+                up_inputs,
+                channels,
+                reversed(cond_next),
+                factors):
+            self.ups.append(Upsample(
+                input_channels,
+                output_channels,
+                condition_channels,
+                factor,
+            ))
         # output layer
         self.output_layer = DCC(channels[-1], 1, 3, 1)
 
