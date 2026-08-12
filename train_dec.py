@@ -10,9 +10,9 @@ from tqdm import tqdm
 from module.dataset import Dataset
 from module.loss import MultiResolutionSTFTLoss
 from module.adversarial import discriminator_loss, generator_adversarial_loss, require_finite
+from module.audio import perceptual_loudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
-from module.common import energy
 from module.discriminator import Discriminator
 
 
@@ -119,7 +119,7 @@ while step_count < args.steps:
 
             with torch.no_grad():
                 z = CE.encode(wave)
-            e = energy(wave)
+            e = perceptual_loudness(wave)
             fake = Dec.synthesize(z, f0, e)
             require_finite("generated waveform", fake)
 

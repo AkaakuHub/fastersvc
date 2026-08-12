@@ -18,13 +18,6 @@ def spectrogram(wave, n_fft, hop_size):
     spec = spec.to(dtype)
     return spec
 
-# wave: [BatchSize, 1, Length]
-# Output: [BatchSize, 1, Frames]
-def energy(wave,
-           frame_size=480):
-    return F.max_pool1d((wave.abs()).unsqueeze(1), frame_size)
-
-
 # Convert style based kNN.
 # Warning: this method is not optimized.
 # Do not give long sequence. computing complexy is quadratic.

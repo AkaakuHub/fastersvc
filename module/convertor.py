@@ -6,7 +6,8 @@ import torch.nn as nn
 from .content_encoder import ContentEncoder
 from .pitch_estimator import PitchEstimator
 from .decoder import Decoder
-from .common import energy, match_features, compute_f0
+from .audio import perceptual_loudness
+from .common import match_features, compute_f0
 from .excitation import generate_excitation
 
 
@@ -35,7 +36,7 @@ class Convertor(nn.Module):
         z = self.content_encoder.encode(wave)
 
         z = match_features(z, tgt, k, alpha)
-        l = energy(wave)
+        l = perceptual_loudness(wave, self.sample_rate, self.frame_size)
         if pitch_estimation_algorithm != 'default':
             p = compute_f0(wave, algorithm=pitch_estimation_algorithm)
         else:
@@ -71,13 +72,13 @@ class Convertor(nn.Module):
         # concateante audio buffer and chunk
         x = torch.cat([audio_buffer, chunk], dim=1)
 
-        # encode content, estimate energy, estimate pitch
+        # encode content, estimate loudness, estimate pitch
         z = self.content_encoder.encode(x)
         if pitch_estimation == 'default':
             p = self.pitch_estimator.estimate(x)
         else:
             p = compute_f0(x, algorithm=pitch_estimation)
-        e = energy(x, self.frame_size)
+        e = perceptual_loudness(x, self.sample_rate, self.frame_size)
 
         # convert style
         z = match_features(z, tgt, k, alpha)
