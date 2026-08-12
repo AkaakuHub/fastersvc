@@ -75,8 +75,13 @@ class TrainingContractsTest(unittest.TestCase):
 
     def test_multiresolution_loss_is_zero_for_identical_waveforms(self):
         waveform = torch.randn(1, 4096)
-        loss = MultiResolutionSTFTLoss()(waveform, waveform)
+        loss_function = MultiResolutionSTFTLoss()
+        loss = loss_function(waveform, waveform)
         self.assertLess(loss.item(), 1e-6)
+        self.assertEqual(
+            len(tuple(loss_function.buffers())),
+            len(loss_function.fft_sizes),
+        )
 
     def test_lsgan_uses_real_one_and_generated_zero_targets(self):
         real = [torch.ones(1, 4)]

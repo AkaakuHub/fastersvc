@@ -13,6 +13,12 @@ class MultiResolutionSTFTLoss(nn.Module):
             ):
         super().__init__()
         self.fft_sizes = fft_sizes
+        for n_fft in fft_sizes:
+            self.register_buffer(
+                f"window_{n_fft}",
+                torch.hann_window(n_fft),
+                persistent=False,
+            )
 
     def forward(self, x, y):
         x = x.float()
@@ -20,7 +26,7 @@ class MultiResolutionSTFTLoss(nn.Module):
         loss = x.new_tensor(0.0)
         for n_fft in self.fft_sizes:
             hop_length = n_fft // 4
-            window = torch.hann_window(n_fft, device=x.device)
+            window = getattr(self, f"window_{n_fft}")
             x_spec = torch.stft(x, n_fft, hop_length, return_complex=True, window=window).abs()
             y_spec = torch.stft(y, n_fft, hop_length, return_complex=True, window=window).abs()
             spectral_convergence = torch.linalg.vector_norm(x_spec - y_spec) / torch.linalg.vector_norm(y_spec).clamp_min(1e-6)
