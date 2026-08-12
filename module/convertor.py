@@ -19,6 +19,7 @@ class Convertor(nn.Module):
         self.pitch_estimator = PitchEstimator().eval()
         self.decoder = Decoder().eval()
         self.frame_size = self.decoder.frame_size
+        self.loudness_frame_size = self.decoder.loudness_frame_size
         self.sample_rate = self.decoder.sample_rate
 
     def load(self, path='./models', device='cpu'):
@@ -37,7 +38,12 @@ class Convertor(nn.Module):
         z = self.content_encoder.encode(wave)
 
         z = match_features(z, tgt, k, alpha)
-        l = perceptual_loudness(wave, self.sample_rate, self.frame_size)
+        l = perceptual_loudness(
+            wave,
+            self.sample_rate,
+            self.loudness_frame_size,
+            self.decoder.loudness_n_fft,
+        )
         if pitch_estimation_algorithm != 'default':
             p = compute_f0(wave, algorithm=pitch_estimation_algorithm)
         else:
@@ -79,7 +85,12 @@ class Convertor(nn.Module):
             p = self.pitch_estimator.estimate(x)
         else:
             p = compute_f0(x, algorithm=pitch_estimation)
-        e = perceptual_loudness(x, self.sample_rate, self.frame_size)
+        e = perceptual_loudness(
+            x,
+            self.sample_rate,
+            self.loudness_frame_size,
+            self.decoder.loudness_n_fft,
+        )
 
         # convert style
         z = match_features(z, tgt, k, alpha)
@@ -98,7 +109,7 @@ class Convertor(nn.Module):
         source_signal = torch.cat([source_buffer, current_source], dim=2)
         
         # synthesize new voice
-        y = self.decoder(z, p, e, source_signal)
+        y = self.decoder(z, e, source_signal)
 
         # return new voice and shift left
         left_shift = self.frame_size * 3

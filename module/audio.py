@@ -29,8 +29,8 @@ def a_weighting(frequencies, minimum_db=-80.0):
 def perceptual_loudness(
         waveforms,
         sample_rate=24000,
-        frame_size=480,
-        n_fft=1920,
+        frame_size=96,
+        n_fft=768,
         range_db=80.0):
     if waveforms.ndim != 2:
         raise ValueError("waveforms must have shape [batch, samples]")

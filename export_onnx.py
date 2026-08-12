@@ -54,20 +54,18 @@ print("Exporting Decoder")
 content_channels = convertor.decoder.content_channels
 frames_per_second = convertor.decoder.sample_rate // convertor.decoder.frame_size
 z = torch.randn(1, content_channels, frames_per_second) # content
-p = torch.randn(1, 1, frames_per_second) # pitch
-e = torch.randn(1, 1, frames_per_second) # energy
+e = torch.randn(1, 1, convertor.decoder.sample_rate // convertor.decoder.loudness_frame_size)
 src = torch.randn(1, 1, convertor.decoder.sample_rate) # source signal
 torch.onnx.export(
         convertor.decoder,
-        (z, p, e, src),
+        (z, e, src),
         os.path.join(args.outputs, "decoder.onnx"),
         opset_version=opset_version,
-        input_names=["content", "pitch", "energy",  "source"],
+        input_names=["content", "loudness", "source"],
         output_names=["output"],
         dynamic_axes={
             "content": {0: "batch_size", 2: "length"},
-            "pitch": {0: "batch_size", 2: "length"},
-            "energy": {0: "batch_size", 2: "length"},
+            "loudness": {0: "batch_size", 2: "length"},
             "source": {0: "batch_size", 2: "length"}})
 
 

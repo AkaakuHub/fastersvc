@@ -22,7 +22,7 @@ class AudioPreprocessingTest(unittest.TestCase):
             normalize_ssl_input(torch.zeros(1, 1, 100))
 
     def test_perceptual_loudness_has_decoder_frame_timing(self):
-        loudness = perceptual_loudness(torch.zeros(2, 480 * 5))
+        loudness = perceptual_loudness(torch.zeros(2, 96 * 5))
 
         self.assertEqual(loudness.shape, (2, 1, 5))
         self.assertTrue(torch.equal(loudness, torch.full_like(loudness, -80.0)))
@@ -46,7 +46,7 @@ class AudioPreprocessingTest(unittest.TestCase):
 
     def test_perceptual_loudness_rejects_partial_frames(self):
         with self.assertRaises(ValueError):
-            perceptual_loudness(torch.zeros(1, 481))
+            perceptual_loudness(torch.zeros(1, 97))
 
 
 if __name__ == "__main__":
