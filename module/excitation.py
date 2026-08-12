@@ -9,7 +9,6 @@ def generate_excitation(
         phase=0,
         frame_size=480,
         sample_rate=24000,
-        alignment_sample=0,
         voiced_threshold=10.0,
         sine_amplitude=0.1,
         voiced_noise_std=0.003,
@@ -33,7 +32,7 @@ def generate_excitation(
     )
 
     integrated_phase = torch.cumsum(audio_rate_f0 / sample_rate, dim=2)
-    integrated_phase = integrated_phase - integrated_phase[:, :, alignment_sample:alignment_sample + 1]
+    integrated_phase = integrated_phase - integrated_phase[:, :, :1]
     cycle_phase = (integrated_phase + phase) % 1
     sine = torch.sin(2 * math.pi * cycle_phase)
 

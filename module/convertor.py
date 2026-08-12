@@ -49,9 +49,12 @@ class Convertor(nn.Module):
     # initialize buffer for realtime inferencing
     @torch.inference_mode()
     def init_buffer(self, buffer_size, device='cpu'):
+        if buffer_size % self.frame_size != 0:
+            raise ValueError("buffer size must be a multiple of the decoder frame size")
         audio_buffer = torch.zeros(1, buffer_size, device=device)
+        source_buffer = torch.zeros(1, 1, buffer_size, device=device)
         phase_buffer = torch.zeros(1, 1, 1, device=device)
-        return audio_buffer, phase_buffer
+        return audio_buffer, source_buffer, phase_buffer
     
     # convert voice with buffer for realtime inferencing
     @torch.inference_mode()
@@ -59,10 +62,13 @@ class Convertor(nn.Module):
         k = int(k)
 
         # extpand buffer variables
-        audio_buffer, phase_buffer = buffer
+        audio_buffer, source_buffer, phase_buffer = buffer
 
         # buffer size and chunk size
         buffer_size = audio_buffer.shape[1]
+        chunk_size = chunk.shape[1]
+        if chunk_size % self.frame_size != 0:
+            raise ValueError("chunk size must be a multiple of the decoder frame size")
         # concateante audio buffer and chunk
         x = torch.cat([audio_buffer, chunk], dim=1)
 
@@ -82,12 +88,13 @@ class Convertor(nn.Module):
         scale += pitch_shift
         p = 440 * 2 ** (scale / 12)
 
-        source_signal, new_phase_buffer = generate_excitation(
-                p,
+        current_frame_count = chunk_size // self.frame_size
+        current_source, new_phase_buffer = generate_excitation(
+                p[:, :, -current_frame_count:],
                 phase_buffer,
                 self.frame_size,
-                self.sample_rate,
-                alignment_sample=buffer_size)
+                self.sample_rate)
+        source_signal = torch.cat([source_buffer, current_source], dim=2)
         
         # synthesize new voice
         y = self.decoder(z, p, e, source_signal)
@@ -96,5 +103,6 @@ class Convertor(nn.Module):
         left_shift = self.frame_size * 3
         audio_out = y[:, buffer_size-left_shift:-left_shift]
         new_audio_buffer = x[:, -buffer_size:]
+        new_source_buffer = source_signal[:, :, -buffer_size:]
 
-        return audio_out, (new_audio_buffer, new_phase_buffer)
+        return audio_out, (new_audio_buffer, new_source_buffer, new_phase_buffer)
