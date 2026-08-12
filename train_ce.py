@@ -4,11 +4,13 @@ import os
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+from torchaudio.functional import resample
 
 from tqdm import tqdm
 
 from module.dataset import Dataset
 from module.content_encoder import ContentEncoder
+from module.audio import normalize_ssl_input
 from transformers import HubertModel
 
 parser = argparse.ArgumentParser(description="distillation of hubert")
@@ -20,8 +22,6 @@ parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
 parser.add_argument('-d', '--device', default='cuda')
 parser.add_argument('-e', '--epoch', default=60, type=int)
 parser.add_argument('-b', '--batch-size', default=16, type=int)
-parser.add_argument('-len', '--length', default=48000, type=int)
-parser.add_argument('-m', '--max-data', default=-1, type=int)
 parser.add_argument('-fp16', '--fp16', action='store_true')
 
 args = parser.parse_args()
@@ -62,7 +62,8 @@ for epoch in range(args.epoch):
 
         with torch.amp.autocast(device.type, enabled=args.fp16):
             with torch.no_grad():
-                h = hubert(wave, output_hidden_states=True).hidden_states
+                hubert_wave = normalize_ssl_input(resample(wave, 24000, 16000))
+                h = hubert(hubert_wave, output_hidden_states=True).hidden_states
                 hubert_features = (h[4] + h[9]) * 0.5 # based https://arxiv.org/pdf/2110.13900.pdf Fig. 2
                 hubert_features = hubert_features.transpose(1, 2)
 

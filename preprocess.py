@@ -19,12 +19,10 @@ parser.add_argument('-o', '--output', default='dataset_cache')
 parser.add_argument('-len', '--length', default=48000, type=int)
 parser.add_argument('--num-speakers', default=8192, type=int)
 parser.add_argument('-m', '--max-files', default=-1, type=int)
-parser.add_argument('-d', '--device', default='cuda')
+parser.add_argument('--pitch-algorithm', default='harvest', choices=['harvest', 'dio'])
 parser.add_argument('--speaker-infomation', default='speaker_infomation.json')
 
 args = parser.parse_args()
-
-device = torch.device(args.device)
 
 input_parent = Path(args.input)
 dataset_files = []
@@ -38,8 +36,7 @@ if args.max_files != -1:
 
 # create output directory
 output_parent = Path(args.output)
-if not output_parent.exists():
-    output_parent.mkdir()
+output_parent.mkdir(parents=True, exist_ok=True)
 
 parent_paths = []
 counter = 0
@@ -59,7 +56,7 @@ for path in tqdm(dataset_files):
             chunk = torch.cat([chunk, pad], dim=1)
 
         # f0
-        f0 = compute_f0(chunk)
+        f0 = compute_f0(chunk, algorithm=args.pitch_algorithm)
 
 
         # get spekaer id
