@@ -19,6 +19,9 @@ class Convertor(nn.Module):
         self.pitch_estimator = PitchEstimator().eval()
         self.decoder = Decoder().eval()
         self.frame_size = self.decoder.frame_size
+        if self.content_encoder.n_fft != self.pitch_estimator.n_fft:
+            raise ValueError("content and pitch analysis windows must match")
+        self.lookahead_samples = self.content_encoder.n_fft // 2 + self.frame_size
         self.loudness_frame_size = self.decoder.loudness_frame_size
         self.sample_rate = self.decoder.sample_rate
         self.loudness_extractor = PerceptualLoudness(
@@ -58,6 +61,8 @@ class Convertor(nn.Module):
     def init_buffer(self, buffer_size, device='cpu'):
         if buffer_size % self.frame_size != 0:
             raise ValueError("buffer size must be a multiple of the decoder frame size")
+        if buffer_size < self.lookahead_samples:
+            raise ValueError("buffer size must cover the analysis lookahead")
         audio_buffer = torch.zeros(1, buffer_size, device=device)
         source_buffer = torch.zeros(1, 1, buffer_size, device=device)
         phase_buffer = torch.zeros(1, 1, 1, device=device)
@@ -107,8 +112,7 @@ class Convertor(nn.Module):
         y = self.decoder(z, e, source_signal)
 
         # return new voice and shift left
-        left_shift = self.frame_size * 3
-        audio_out = y[:, buffer_size-left_shift:-left_shift]
+        audio_out = y[:, buffer_size-self.lookahead_samples:-self.lookahead_samples]
         new_audio_buffer = x[:, -buffer_size:]
         new_source_buffer = source_signal[:, :, -buffer_size:]
 

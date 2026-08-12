@@ -53,7 +53,7 @@ paths = []
 for fmt in support_formats:
     paths += glob.glob(os.path.join(args.inputs, "*." + fmt))
 paths.sort()
-left_shift = convertor.frame_size * 3
+left_shift = convertor.lookahead_samples
 buffer_size = args.buffer * args.chunk
 for i, path in enumerate(paths):
     print(f"Converting {path} ...")

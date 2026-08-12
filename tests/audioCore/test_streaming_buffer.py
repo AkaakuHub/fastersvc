@@ -28,6 +28,12 @@ class StreamingBufferTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             convertor.init_buffer(1000)
 
+    def test_rejects_buffer_shorter_than_analysis_lookahead(self):
+        convertor = Convertor()
+        self.assertEqual(convertor.lookahead_samples, 1440)
+        with self.assertRaises(ValueError):
+            convertor.init_buffer(960)
+
 
 if __name__ == "__main__":
     unittest.main()
