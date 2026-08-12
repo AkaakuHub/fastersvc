@@ -2,7 +2,6 @@ import argparse
 import os 
 
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
 from torchaudio.functional import resample
 
@@ -10,6 +9,7 @@ from tqdm import tqdm
 
 from module.dataset import Dataset
 from module.content_encoder import ContentEncoder
+from module.content_features import align_content_frames, select_hubert_content
 from module.audio import normalize_ssl_input
 from transformers import HubertModel
 
@@ -64,13 +64,12 @@ for epoch in range(args.epoch):
             with torch.no_grad():
                 hubert_wave = normalize_ssl_input(resample(wave, 24000, 16000))
                 h = hubert(hubert_wave, output_hidden_states=True).hidden_states
-                hubert_features = (h[4] + h[9]) * 0.5 # based https://arxiv.org/pdf/2110.13900.pdf Fig. 2
-                hubert_features = hubert_features.transpose(1, 2)
+                hubert_features = select_hubert_content(h)
 
         Opt.zero_grad()
         with torch.amp.autocast(device.type, enabled=args.fp16):
             z = CE.encode(wave)
-            hubert_features = F.interpolate(hubert_features, z.shape[2])
+            hubert_features = align_content_frames(hubert_features, z.shape[2])
             loss = (z - hubert_features).abs().mean()
 
         scaler.scale(loss).backward()
