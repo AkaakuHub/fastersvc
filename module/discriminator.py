@@ -66,14 +66,9 @@ class MultiPeriodicDiscriminator(nn.Module):
 
 
 class DiscriminatorS(nn.Module):
-    def __init__(self, scale=1, channels=32, num_layers=6, max_channels=256, max_groups=8, use_spectral_norm=False):
+    def __init__(self, channels=32, num_layers=6, max_channels=256, max_groups=8, use_spectral_norm=False):
         super().__init__()
         norm_f = nn.utils.weight_norm if use_spectral_norm == False else nn.utils.spectral_norm
-
-        if scale == 1:
-            self.pool = nn.Identity()
-        else:
-            self.pool = nn.AvgPool1d(scale * 2, scale, padding=scale)
 
         c = channels
         g = 1
@@ -89,7 +84,6 @@ class DiscriminatorS(nn.Module):
 
     def forward(self, x):
         fmap = []
-        x = self.pool(x)
         fmap.append(x)
         for l in self.convs:
             x = l(x)
@@ -101,12 +95,19 @@ class DiscriminatorS(nn.Module):
 
 
 class MultiScaleDiscriminator(nn.Module):
-    def __init__(self, scales, channels, max_channels, max_groups, num_layers):
+    def __init__(self, num_scales, channels, max_channels, max_groups, num_layers):
         super().__init__()
-        self.sub_discs = nn.ModuleList([])
-        for i, s in enumerate(scales):
-            use_spectral_norm = (i == 0)
-            self.sub_discs.append(DiscriminatorS(s, channels, num_layers, max_channels, max_groups, use_spectral_norm))
+        self.sub_discs = nn.ModuleList([
+            DiscriminatorS(
+                channels,
+                num_layers,
+                max_channels,
+                max_groups,
+                use_spectral_norm=index == 0,
+            )
+            for index in range(num_scales)
+        ])
+        self.downsample = nn.AvgPool1d(4, 2, padding=2)
 
     def forward(self, x):
         feats = []
@@ -115,12 +116,13 @@ class MultiScaleDiscriminator(nn.Module):
             logit, fmap = d(x)
             logits.append(logit)
             feats += fmap
+            x = self.downsample(x)
         return logits, feats
 
 
 class Discriminator(nn.Module):
     def __init__(self,
-                 scales=(1, 2, 3),
+                 num_scales=3,
                  periods=(),
                  mpd_num_layers=5,
                  msd_num_layers=7,
@@ -132,7 +134,7 @@ class Discriminator(nn.Module):
                  ):
         super().__init__()
         self.MPD = MultiPeriodicDiscriminator(periods, mpd_channels, mpd_max_channels, mpd_num_layers)
-        self.MSD = MultiScaleDiscriminator(scales, msd_channels, msd_max_channels, msd_max_groups, msd_num_layers)
+        self.MSD = MultiScaleDiscriminator(num_scales, msd_channels, msd_max_channels, msd_max_groups, msd_num_layers)
 
     def forward(self, x):
         x = x.unsqueeze(1)

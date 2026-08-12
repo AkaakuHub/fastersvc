@@ -6,7 +6,7 @@ import torch
 
 from module.adversarial import discriminator_loss, generator_adversarial_loss
 from module.common import compute_f0_harvest
-from module.discriminator import DiscriminatorS
+from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
 
 
@@ -24,9 +24,17 @@ class TrainingContractsTest(unittest.TestCase):
 
     def test_discriminator_scales_downsample_higher_scales(self):
         waveform = torch.randn(1, 1, 16000)
-        scale_one = DiscriminatorS(scale=1)
-        scale_two = DiscriminatorS(scale=2)
-        self.assertGreater(scale_one.pool(waveform).shape[-1], scale_two.pool(waveform).shape[-1])
+        discriminator = MultiScaleDiscriminator(
+            num_scales=3,
+            channels=8,
+            max_channels=32,
+            max_groups=4,
+            num_layers=2,
+        )
+        logits, _ = discriminator(waveform)
+        lengths = [logit.shape[-1] for logit in logits]
+        self.assertGreater(lengths[0], lengths[1])
+        self.assertGreater(lengths[1], lengths[2])
 
     @patch("module.common.pw.harvest")
     def test_batched_harvest_does_not_call_dio(self, harvest):
