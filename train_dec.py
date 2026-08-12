@@ -9,7 +9,7 @@ from tqdm import tqdm
 from module.dataset import Dataset
 from module.loss import MultiResolutionSTFTLoss
 from module.adversarial import discriminator_loss, generator_adversarial_loss, require_finite
-from module.audio import perceptual_loudness
+from module.audio import PerceptualLoudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
@@ -88,6 +88,7 @@ OptDec = optim.Adam(Dec.parameters(), lr=args.learning_rate)
 OptDis = optim.Adam(Dis.parameters(), lr=args.learning_rate)
 
 spectral_loss = MultiResolutionSTFTLoss().to(device)
+loudness_extractor = PerceptualLoudness().to(device)
 
 step_count = 0
 if os.path.exists(args.training_state_path):
@@ -118,7 +119,7 @@ while step_count < args.steps:
 
             with torch.no_grad():
                 z = CE.encode(wave)
-            e = perceptual_loudness(wave)
+            e = loudness_extractor(wave)
             fake = Dec.synthesize(z, f0, e)
             require_finite("generated waveform", fake)
 

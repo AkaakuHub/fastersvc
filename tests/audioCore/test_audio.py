@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from module.audio import a_weighting, normalize_ssl_input, perceptual_loudness
+from module.audio import PerceptualLoudness, a_weighting, normalize_ssl_input, perceptual_loudness
 
 
 class AudioPreprocessingTest(unittest.TestCase):
@@ -47,6 +47,17 @@ class AudioPreprocessingTest(unittest.TestCase):
     def test_perceptual_loudness_rejects_partial_frames(self):
         with self.assertRaises(ValueError):
             perceptual_loudness(torch.zeros(1, 97))
+
+    def test_loudness_analysis_coefficients_are_reused(self):
+        extractor = PerceptualLoudness()
+        window = extractor.window
+        weighting = extractor.weighting
+
+        extractor(torch.zeros(1, 960))
+        extractor(torch.ones(1, 960))
+
+        self.assertIs(extractor.window, window)
+        self.assertIs(extractor.weighting, weighting)
 
 
 if __name__ == "__main__":

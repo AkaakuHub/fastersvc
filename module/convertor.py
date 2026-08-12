@@ -6,7 +6,7 @@ import torch.nn as nn
 from .content_encoder import ContentEncoder
 from .pitch_estimator import PitchEstimator
 from .decoder import Decoder
-from .audio import perceptual_loudness
+from .audio import PerceptualLoudness
 from .common import match_features, compute_f0
 from .excitation import generate_excitation
 
@@ -21,6 +21,11 @@ class Convertor(nn.Module):
         self.frame_size = self.decoder.frame_size
         self.loudness_frame_size = self.decoder.loudness_frame_size
         self.sample_rate = self.decoder.sample_rate
+        self.loudness_extractor = PerceptualLoudness(
+            self.sample_rate,
+            self.loudness_frame_size,
+            self.decoder.loudness_n_fft,
+        )
 
     def load(self, path='./models', device='cpu'):
         self.pitch_estimator.load_state_dict(torch.load(os.path.join(path, 'pitch_estimator.pt'), map_location=device, weights_only=True))
@@ -38,12 +43,7 @@ class Convertor(nn.Module):
         z = self.content_encoder.encode(wave)
 
         z = match_features(z, tgt, k, alpha)
-        l = perceptual_loudness(
-            wave,
-            self.sample_rate,
-            self.loudness_frame_size,
-            self.decoder.loudness_n_fft,
-        )
+        l = self.loudness_extractor(wave)
         if pitch_estimation_algorithm != 'default':
             p = compute_f0(wave, algorithm=pitch_estimation_algorithm)
         else:
@@ -85,12 +85,7 @@ class Convertor(nn.Module):
             p = self.pitch_estimator.estimate(x)
         else:
             p = compute_f0(x, algorithm=pitch_estimation)
-        e = perceptual_loudness(
-            x,
-            self.sample_rate,
-            self.loudness_frame_size,
-            self.decoder.loudness_n_fft,
-        )
+        e = self.loudness_extractor(x)
 
         # convert style
         z = match_features(z, tgt, k, alpha)
