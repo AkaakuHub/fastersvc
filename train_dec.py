@@ -13,7 +13,7 @@ from module.audio import perceptual_loudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
-from module.training import step_scaled_optimizer
+from module.training import crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer
 
 
 parser = argparse.ArgumentParser(description="train voice conversion model")
@@ -22,16 +22,17 @@ parser.add_argument('--dataset-cache', default='dataset_cache')
 parser.add_argument('-cep', '--content-encoder-path', default='models/content_encoder.pt')
 parser.add_argument('-dip', '--discriminator-path', default='models/discriminator.pt')
 parser.add_argument('-dep', '--decoder-path', default='models/decoder.pt')
-parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
+parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
 parser.add_argument('-d', '--device', default='cuda')
 parser.add_argument('--steps', default=600000, type=int)
-parser.add_argument('-b', '--batch-size', default=16, type=int)
+parser.add_argument('-b', '--batch-size', default=32, type=int)
 parser.add_argument('--save-interval', default=100, type=int)
 parser.add_argument('--training-state-path', default='models/decoder-training.pt')
 parser.add_argument('-fp16', '--fp16', action='store_true')
 
-parser.add_argument('--weight-adv', default=1.0, type=float)
+parser.add_argument('--weight-adv', default=2.5, type=float)
 parser.add_argument('--weight-stft', default=1.0, type=float)
+parser.add_argument('--discriminator-start-step', default=100000, type=int)
 
 args = parser.parse_args()
 
@@ -72,12 +73,6 @@ def save_models(dec, dis, opt_dec, opt_dis, scaler, step_count):
     print("Complete!")
 
 
-def center(wave, length=16000):
-    c = wave.shape[1] // 2
-    half_len = length // 2
-    return wave[:, c-half_len:c+half_len]
-
-
 device = torch.device(args.device)
 
 Dec, Dis = load_or_init_models(device)
@@ -89,8 +84,8 @@ dl = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=True)
 
 scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
 
-OptDec = optim.AdamW(Dec.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
-OptDis = optim.AdamW(Dis.parameters(), lr=args.learning_rate, betas=(0.8, 0.99))
+OptDec = optim.Adam(Dec.parameters(), lr=args.learning_rate)
+OptDis = optim.Adam(Dis.parameters(), lr=args.learning_rate)
 
 spectral_loss = MultiResolutionSTFTLoss().to(device)
 
@@ -116,6 +111,10 @@ while step_count < args.steps:
         with torch.amp.autocast(device.type, enabled=args.fp16):
             wave = wave.to(device)
             f0 = f0.to(device)
+            wave, f0 = crop_aligned_batch(wave, f0)
+            learning_rate = learning_rate_at_step(args.learning_rate, step_count)
+            set_optimizer_learning_rate(OptDec, learning_rate)
+            set_optimizer_learning_rate(OptDis, learning_rate)
 
             with torch.no_grad():
                 z = CE.encode(wave)
@@ -123,25 +122,30 @@ while step_count < args.steps:
             fake = Dec.synthesize(z, f0, e)
             require_finite("generated waveform", fake)
 
-            logits, _ = Dis(center(fake))
-            loss_adv = generator_adversarial_loss(logits)
-
             loss_stft = spectral_loss(fake, wave)
-            loss_g = loss_adv * WEIGHT_ADV + loss_stft * WEIGHT_STFT
+            if step_count >= args.discriminator_start_step:
+                logits, _ = Dis(fake)
+                loss_adv = generator_adversarial_loss(logits)
+                loss_g = loss_adv * WEIGHT_ADV + loss_stft * WEIGHT_STFT
+            else:
+                loss_adv = fake.new_tensor(0.0)
+                loss_g = loss_stft * WEIGHT_STFT
             require_finite("generator loss", loss_g)
 
         step_scaled_optimizer(loss_g, OptDec, scaler, Dec.parameters(), 1.0)
 
-        # train discriminator
-        fake = fake.detach()
-        OptDis.zero_grad()
-        with torch.amp.autocast(device.type, enabled=args.fp16):
-            real_logits, _ = Dis(center(wave))
-            generated_logits, _ = Dis(center(fake))
-            loss_d = discriminator_loss(real_logits, generated_logits)
-            require_finite("discriminator loss", loss_d)
+        if step_count >= args.discriminator_start_step:
+            fake = fake.detach()
+            OptDis.zero_grad()
+            with torch.amp.autocast(device.type, enabled=args.fp16):
+                real_logits, _ = Dis(wave)
+                generated_logits, _ = Dis(fake)
+                loss_d = discriminator_loss(real_logits, generated_logits)
+                require_finite("discriminator loss", loss_d)
 
-        step_scaled_optimizer(loss_d, OptDis, scaler, Dis.parameters(), 1.0)
+            step_scaled_optimizer(loss_d, OptDis, scaler, Dis.parameters(), 1.0)
+        else:
+            loss_d = fake.new_tensor(0.0)
 
         scaler.update()
 

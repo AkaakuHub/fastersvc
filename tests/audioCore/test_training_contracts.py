@@ -8,10 +8,31 @@ from module.adversarial import discriminator_loss, generator_adversarial_loss
 from module.common import compute_f0, compute_f0_harvest
 from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
-from module.training import step_scaled_optimizer
+from module.training import crop_aligned_batch, learning_rate_at_step, step_scaled_optimizer
 
 
 class TrainingContractsTest(unittest.TestCase):
+    def test_uses_paper_learning_rate_decay(self):
+        self.assertEqual(learning_rate_at_step(0.001, 99999), 0.001)
+        self.assertEqual(learning_rate_at_step(0.001, 100000), 0.0005)
+        self.assertEqual(learning_rate_at_step(0.001, 200000), 0.00025)
+
+    @patch("module.training.torch.randint")
+    def test_crops_waveform_and_pitch_at_the_same_frame(self, randint):
+        randint.return_value = torch.tensor([[1]])
+        waveform = torch.arange(12).reshape(1, 12)
+        pitch = torch.arange(4).reshape(1, 1, 4)
+
+        cropped_waveform, cropped_pitch = crop_aligned_batch(
+            waveform,
+            pitch,
+            sample_count=6,
+            frame_size=3,
+        )
+
+        self.assertTrue(torch.equal(cropped_waveform, torch.tensor([[3, 4, 5, 6, 7, 8]])))
+        self.assertTrue(torch.equal(cropped_pitch, torch.tensor([[[1, 2]]])))
+
     def test_unscales_gradients_before_clipping(self):
         parameter = torch.nn.Parameter(torch.tensor([10.0]))
         optimizer = torch.optim.SGD([parameter], lr=1.0)
