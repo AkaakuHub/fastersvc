@@ -146,7 +146,7 @@ class Decoder(nn.Module):
 
     def forward(self, x, e, source_signals):
         expected_length = x.shape[2] * self.frame_size
-        if source_signals.shape != (x.shape[0], 1, expected_length):
+        if not torch.jit.is_tracing() and source_signals.shape != (x.shape[0], 1, expected_length):
             raise ValueError("source excitation length differs from content timing")
         loudness_signal = F.interpolate(
             e,

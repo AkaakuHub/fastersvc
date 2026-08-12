@@ -34,7 +34,8 @@ torch.onnx.export(
         input_names=["input"],
         output_names=["output"],
         dynamic_axes={
-            "input": {0: "batch_size", 2: "length"}})
+            "input": {0: "batch_size", 2: "spectrogram_frames"},
+            "output": {0: "batch_size", 2: "pitch_frames"}})
 
 
 print("Exporting content encoder")
@@ -48,7 +49,8 @@ torch.onnx.export(
         input_names=["input"],
         output_names=["output"],
         dynamic_axes={
-            "input": {0: "batch_size", 2: "length"}})
+            "input": {0: "batch_size", 2: "spectrogram_frames"},
+            "output": {0: "batch_size", 2: "content_frames"}})
 
 print("Exporting Decoder")
 content_channels = convertor.decoder.content_channels
@@ -64,9 +66,10 @@ torch.onnx.export(
         input_names=["content", "loudness", "source"],
         output_names=["output"],
         dynamic_axes={
-            "content": {0: "batch_size", 2: "length"},
-            "loudness": {0: "batch_size", 2: "length"},
-            "source": {0: "batch_size", 2: "length"}})
+            "content": {0: "batch_size", 2: "content_frames"},
+            "loudness": {0: "batch_size", 2: "loudness_frames"},
+            "source": {0: "batch_size", 2: "audio_samples"},
+            "output": {0: "batch_size", 1: "audio_samples"}})
 
 
 if args.index != 'NONE':
@@ -82,4 +85,5 @@ if args.index != 'NONE':
             input_names=["input"],
             output_names=["output"],
             dynamic_axes={
-                "input": {0: "batch_size", 2: "length"}})
+                "input": {0: "batch_size", 2: "content_frames"},
+                "output": {0: "batch_size", 2: "content_frames"}})
