@@ -45,7 +45,7 @@ python3 preprocess.py <dataset-directory> --output dataset_cache
 ```
 
 2. Train pitch estimator.
-Distill pitch estimation using a fast and parallelizable 1D CNN with the harvest algorithm from WORLD.
+Distill clean WORLD Harvest pitch labels using a fast and parallelizable 1D CNN. The default run is 10,000 steps, saves every 500 steps and resumes the optimizer and scaler from `--training-state-path`.
 ```sh
 python3 train_pe.py --dataset-cache dataset_cache
 ```

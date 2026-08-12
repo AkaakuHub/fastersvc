@@ -39,7 +39,7 @@ python3 preprocess.py <dataset-directory> --output dataset_cache
 ```
 
 2. ピッチ推定器を学習
-WORLDのharvestアルゴリズムによるピッチ推定を高速かつ並列に処理可能な1次元CNNで蒸留する。
+WORLDのHarvestで求めた無加工の音高を、高速かつ並列に処理可能な1次元CNNへ蒸留する。既定では10,000step学習し、500stepごとに保存する。同じ`--training-state-path`を指定するとoptimizerとscalerを含む状態から再開する。
 ```sh
 python3 train_pe.py --dataset-cache dataset_cache
 ```
@@ -75,7 +75,7 @@ python3 extract_index.py --dataset-cache speaker_cache --output <dictionary-outp
 
 ### 学習オプション
 - `--fp16`を付けるとmixed precisionで学習する。
-- `--batch-size <number>`でバッチサイズを変更する。既定値は`16`。
+- `--batch-size <number>`でバッチサイズを変更する。既定値は1秒区間の`32`。
 - `--steps <number>`で総学習step数を変更する。既定値は`600000`。
 - `--device <device>`で演算deviceを変更する。既定値は`cuda`。
 - decoder、discriminator、optimizer、scalerをatomicに保存し、同じ`--training-state-path`を指定すると同一stepから再開する。
