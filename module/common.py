@@ -59,9 +59,12 @@ def match_features(source, reference, k=4, alpha=0.0, metrics='cos'):
         reference_norm = torch.norm(reference, dim=2, keepdim=True) + 1e-6
         source_norm = torch.norm(source, dim=2, keepdim=True) + 1e-6
         sims = torch.bmm(source / source_norm, (reference / reference_norm).transpose(1, 2))
-    best = torch.topk(sims, k, dim=2)
-
-    result = torch.stack([reference[n][best.indices[n]] for n in range(source.shape[0])], dim=0).mean(dim=2)
+    nearest_indices = torch.topk(sims, k, dim=2).indices
+    batch_size, source_frames, _ = nearest_indices.shape
+    channels = reference.shape[2]
+    candidates = reference.unsqueeze(1).expand(-1, source_frames, -1, -1)
+    gather_indices = nearest_indices.unsqueeze(3).expand(batch_size, source_frames, k, channels)
+    result = torch.gather(candidates, 2, gather_indices).mean(dim=2)
     result = result.transpose(1, 2)
     return result * (1-alpha) + input_data * alpha
 

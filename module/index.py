@@ -1,6 +1,4 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .common import match_features
 
@@ -9,7 +7,7 @@ from .common import match_features
 class IndexForOnnx(nn.Module):
     def __init__(self, index):
         super().__init__()
-        self.index = nn.Parameter(index)
+        self.register_buffer("index", index)
 
     def forward(self, x, metrics='L2'):
         return match_features(x, self.index, metrics=metrics)

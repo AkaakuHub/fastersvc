@@ -19,8 +19,7 @@ convertor = Convertor()
 convertor.load(args.models)
 
 print("Exporting onnx...")
-if not os.path.exists(args.outputs):
-    os.mkdir(args.outputs)
+os.makedirs(args.outputs, exist_ok=True)
 
 opset_version = args.opset
 

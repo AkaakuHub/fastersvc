@@ -1,12 +1,5 @@
 import argparse
-import os
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-
-from tqdm import tqdm
 
 from module.dataset import Dataset
 from module.content_encoder import ContentEncoder
@@ -27,7 +20,7 @@ parser.add_argument('-d', '--device', default='cpu')
 
 args = parser.parse_args()
 
-device = torch.device(args.device) # use cpu because content encoder is lightweight.
+device = torch.device(args.device)
 CE = ContentEncoder().to(device).eval()
 CE.load_state_dict(torch.load(args.content_encoder_path, map_location=device, weights_only=True))
 

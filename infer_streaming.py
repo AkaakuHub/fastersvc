@@ -8,7 +8,6 @@ import pyaudio
 from module.convertor import Convertor
 
 
-FRAME_SIZE=480
 INTERNAL_SR=24000
 
 parser = argparse.ArgumentParser(description="realtime inference")

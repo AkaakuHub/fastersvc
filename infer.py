@@ -21,7 +21,7 @@ parser.add_argument('-a', '--alpha', default=0, type=float)
 parser.add_argument('-idx', '--index', default='NONE')
 parser.add_argument('--normalize', action='store_true')
 parser.add_argument('-pe', '--pitch-estimation', default='default', choices=['default', 'dio', 'harvest'])
-parser.add_argument('-c', '--chunk', default=24000, type=int) # should be n * 320
+parser.add_argument('-c', '--chunk', default=24000, type=int)
 parser.add_argument('-nc', '--no-chunking', action='store_true')
 parser.add_argument('-b', '--buffer', default=1, type=int)
 
@@ -33,8 +33,7 @@ convertor = Convertor()
 convertor.load(args.models)
 convertor.to(device)
 
-if not os.path.exists(args.outputs):
-    os.mkdir(args.outputs)
+os.makedirs(args.outputs, exist_ok=True)
 
 
 if args.index == 'NONE':
@@ -53,6 +52,7 @@ support_formats = ['wav', 'ogg', 'mp3']
 paths = []
 for fmt in support_formats:
     paths += glob.glob(os.path.join(args.inputs, "*." + fmt))
+paths.sort()
 left_shift = convertor.frame_size * 3
 buffer_size = args.buffer * args.chunk
 for i, path in enumerate(paths):
