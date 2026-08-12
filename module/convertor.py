@@ -26,6 +26,7 @@ class Convertor(nn.Module):
         self.content_encoder.load_state_dict(torch.load(os.path.join(path, 'content_encoder.pt'), map_location=device, weights_only=True))
         self.decoder.load_state_dict(torch.load(os.path.join(path, 'decoder.pt'), map_location=device, weights_only=True))
 
+    @torch.inference_mode()
     def encode_target(self, wave, stride=4):
         tgt = self.content_encoder.encode(wave)
         return tgt[:, :, ::stride]
