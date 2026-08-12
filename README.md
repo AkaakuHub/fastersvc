@@ -57,7 +57,7 @@ python3 train_ce.py --dataset-cache dataset_cache
 ```
 
 4. Train decoder
-The decoder reconstructs the original waveform from pitch, content, loudness and a voiced/unvoiced excitation. Training uses the multi-resolution STFT and least-squares adversarial losses described by FastSVC. The default run is 600,000 steps.
+The decoder reconstructs the original waveform from content, 250Hz A-weighted loudness and a voiced/unvoiced excitation. Training uses the multi-resolution STFT and least-squares adversarial losses described by FastSVC. The discriminator starts at 100,000 steps, the learning rate halves every 100,000 steps and the default run is 600,000 steps.
 
 ```sh
 python3 train_dec.py --dataset-cache dataset_cache --fp16
@@ -81,7 +81,7 @@ python3 extract_index.py --dataset-cache speaker_cache --output <dictionary-outp
 
 ## Training Options
 - Add `--fp16` to enable mixed-precision training.
-- Add `--batch-size <number>` to set the batch size. The default is `16`.
+- Add `--batch-size <number>` to set the batch size. The default is `32` one-second segments.
 - Add `--steps <number>` to set the total training step. The default is `600000`.
 - Add `--device <device>` to set the training device. The default is `cuda`.
 - Decoder, discriminator, optimizer and scaler states are saved atomically. Reusing `--training-state-path` resumes the exact step.
