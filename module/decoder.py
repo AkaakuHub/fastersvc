@@ -7,11 +7,10 @@ from .excitation import generate_excitation
 
 
 def initialize_wavegrad_convolution(module):
-    convolution = module.conv if isinstance(module, DCC) else module
-    if isinstance(convolution, nn.Conv1d):
-        nn.init.orthogonal_(convolution.weight)
-        if convolution.bias is not None:
-            nn.init.zeros_(convolution.bias)
+    if isinstance(module, nn.Conv1d):
+        nn.init.orthogonal_(module.weight)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
 
 
 class FiLM(nn.Module):
