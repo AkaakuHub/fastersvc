@@ -2,7 +2,6 @@ import argparse
 import os 
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 
 from tqdm import tqdm
@@ -14,6 +13,7 @@ from module.audio import perceptual_loudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
+from module.training import step_scaled_optimizer
 
 
 parser = argparse.ArgumentParser(description="train voice conversion model")
@@ -130,9 +130,7 @@ while step_count < args.steps:
             loss_g = loss_adv * WEIGHT_ADV + loss_stft * WEIGHT_STFT
             require_finite("generator loss", loss_g)
 
-        scaler.scale(loss_g).backward()
-        nn.utils.clip_grad_norm_(Dec.parameters(), 1.0)
-        scaler.step(OptDec)
+        step_scaled_optimizer(loss_g, OptDec, scaler, Dec.parameters(), 1.0)
 
         # train discriminator
         fake = fake.detach()
@@ -143,9 +141,7 @@ while step_count < args.steps:
             loss_d = discriminator_loss(real_logits, generated_logits)
             require_finite("discriminator loss", loss_d)
 
-        scaler.scale(loss_d).backward()
-        nn.utils.clip_grad_norm_(Dis.parameters(), 1.0)
-        scaler.step(OptDis)
+        step_scaled_optimizer(loss_d, OptDis, scaler, Dis.parameters(), 1.0)
 
         scaler.update()
 

@@ -8,9 +8,21 @@ from module.adversarial import discriminator_loss, generator_adversarial_loss
 from module.common import compute_f0, compute_f0_harvest
 from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
+from module.training import step_scaled_optimizer
 
 
 class TrainingContractsTest(unittest.TestCase):
+    def test_unscales_gradients_before_clipping(self):
+        parameter = torch.nn.Parameter(torch.tensor([10.0]))
+        optimizer = torch.optim.SGD([parameter], lr=1.0)
+        scaler = torch.amp.GradScaler("cpu", init_scale=65536.0)
+        loss = parameter * 100.0
+
+        gradient_norm = step_scaled_optimizer(loss, optimizer, scaler, [parameter], 1.0)
+
+        self.assertAlmostEqual(gradient_norm.item(), 100.0, places=3)
+        self.assertAlmostEqual(parameter.item(), 9.0, places=3)
+
     def test_multiresolution_loss_is_zero_for_identical_waveforms(self):
         waveform = torch.randn(1, 4096)
         loss = MultiResolutionSTFTLoss()(waveform, waveform)
