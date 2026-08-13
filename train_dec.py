@@ -71,6 +71,12 @@ def model_state(model):
     return model.state_dict()
 
 
+def decoder_source(model, pitch):
+    if isinstance(model, DistributedDataParallel):
+        return model.module.generate_source(pitch)
+    return model.generate_source(pitch)
+
+
 def load_model_state(model, state):
     if isinstance(model, DistributedDataParallel):
         model.module.load_state_dict(state)
@@ -167,7 +173,8 @@ while step_count < args.steps:
             with torch.no_grad():
                 z = CE.encode(wave)
             e = loudness_extractor(wave)
-            fake = Dec.synthesize(z, f0, e)
+            source = decoder_source(Dec, f0)
+            fake = Dec(z, e, source)
             require_finite("generated waveform", fake)
 
             loss_stft = spectral_loss(fake, wave)
