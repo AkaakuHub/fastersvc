@@ -43,6 +43,7 @@ parser.add_argument('--steps', default=600000, type=int)
 parser.add_argument('-b', '--batch-size', default=32, type=int)
 parser.add_argument('--workers', default=2 if os.name != 'nt' else 0, type=int)
 parser.add_argument('--save-interval', default=100, type=int)
+parser.add_argument('--log-interval', default=10, type=int)
 parser.add_argument('--training-state-path', default='models/decoder-training.pt')
 parser.add_argument('-fp16', '--fp16', action='store_true')
 
@@ -51,6 +52,8 @@ parser.add_argument('--weight-stft', default=1.0, type=float)
 parser.add_argument('--discriminator-start-step', default=100000, type=int)
 
 args = parser.parse_args()
+if args.log_interval <= 0:
+    raise ValueError("log interval must be positive")
 
 WEIGHT_ADV = args.weight_adv
 WEIGHT_STFT = args.weight_stft
@@ -206,7 +209,7 @@ while step_count < args.steps:
 
         step_count += 1
         
-        if is_primary_process:
+        if is_primary_process and (step_count == 1 or step_count % args.log_interval == 0):
             tqdm.write(f"Epoch {epoch}, Step {step_count}, Dis.: {loss_d.item():.4f}, Adv.: {loss_adv.item():.4f}, STFT: {loss_stft.item():.4f}")
 
         bar.update(N * process_count)
