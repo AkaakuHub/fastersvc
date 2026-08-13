@@ -64,6 +64,12 @@ class DecoderTest(unittest.TestCase):
 
         self.assertEqual(output_channels, [16, 12, 8, 4])
 
+    def test_uses_reference_input_and_output_projection_kernels(self):
+        decoder = Decoder()
+
+        self.assertEqual(decoder.content_in.kernel_size, (3,))
+        self.assertEqual(decoder.output_layer.kernel_size, (1,))
+
     def test_uses_wavegrad_initialization_for_waveform_blocks(self):
         torch.manual_seed(3)
         decoder = Decoder(

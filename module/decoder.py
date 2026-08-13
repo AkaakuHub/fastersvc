@@ -142,7 +142,7 @@ class Decoder(nn.Module):
             self.source_downs.append(Downsample(input_channels, output_channels, factor))
             self.loudness_downs.append(Downsample(input_channels, output_channels, factor))
 
-        self.content_in = nn.Conv1d(content_channels, channels[0], 1)
+        self.content_in = nn.Conv1d(content_channels, channels[0], 3, padding=1)
 
         # initialize upsample layers
         self.ups = nn.ModuleList([])
@@ -159,7 +159,7 @@ class Decoder(nn.Module):
                 factor,
             ))
         # output layer
-        self.output_layer = nn.Conv1d(channels[-1], 1, 3, padding=1)
+        self.output_layer = nn.Conv1d(channels[-1], 1, 1)
         self.apply(initialize_wavegrad_convolution)
         for upsample in self.ups:
             for convolution in (*upsample.film.input_convs, *upsample.film.output_convs):
