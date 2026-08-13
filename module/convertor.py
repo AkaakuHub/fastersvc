@@ -21,7 +21,11 @@ class Convertor(nn.Module):
         self.frame_size = self.decoder.frame_size
         if self.content_encoder.n_fft != self.pitch_estimator.n_fft:
             raise ValueError("content and pitch analysis windows must match")
-        self.lookahead_samples = self.content_encoder.n_fft // 2 + self.frame_size
+        self.lookahead_samples = (
+            self.content_encoder.n_fft // 2
+            + self.frame_size
+            + self.decoder.lookahead_samples
+        )
         self.loudness_frame_size = self.decoder.loudness_frame_size
         self.sample_rate = self.decoder.sample_rate
         self.loudness_extractor = PerceptualLoudness(

@@ -77,9 +77,14 @@ class DecoderTest(unittest.TestCase):
 
         self.assertTrue(torch.allclose(gram, torch.eye(gram.shape[0]), atol=1e-5))
         self.assertTrue(torch.equal(
-            decoder.ups[0].film.input_convs[0].conv.bias,
-            torch.zeros_like(decoder.ups[0].film.input_convs[0].conv.bias),
+            decoder.ups[0].film.input_convs[0].bias,
+            torch.zeros_like(decoder.ups[0].film.input_convs[0].bias),
         ))
+
+    def test_declares_symmetric_decoder_lookahead(self):
+        decoder = Decoder()
+
+        self.assertEqual(decoder.lookahead_samples, 4241)
 
     def test_rejects_excitation_that_differs_from_content_timing(self):
         decoder = Decoder(

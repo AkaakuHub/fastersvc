@@ -32,15 +32,17 @@ class PerceptualLoudness(nn.Module):
             self,
             sample_rate=24000,
             frame_size=96,
-            n_fft=768):
+            n_fft=768,
+            range_db=80.0):
         super().__init__()
         self.frame_size = frame_size
         self.n_fft = n_fft
+        self.range_db = range_db
         frequencies = torch.fft.rfftfreq(n_fft, 1.0 / sample_rate)
         self.register_buffer("window", torch.hann_window(n_fft), persistent=False)
         self.register_buffer(
             "weighting",
-            torch.pow(10.0, a_weighting(frequencies) / 20.0).view(1, -1, 1),
+            torch.pow(10.0, a_weighting(frequencies) / 10.0).view(1, -1, 1),
             persistent=False,
         )
 
@@ -59,15 +61,20 @@ class PerceptualLoudness(nn.Module):
             center=False,
             return_complex=True,
         )
-        loudness = torch.log((spectrum.abs() * self.weighting).mean(dim=1) + 1e-5)
+        weighted_power = spectrum.abs().square() * self.weighting
+        average_power = weighted_power.mean(dim=1)
+        minimum_power = 10.0 ** (-self.range_db / 10.0)
+        loudness_db = 10.0 * torch.log10(average_power.clamp_min(minimum_power))
+        loudness_db = loudness_db.clamp_min(-self.range_db)
         expected_frames = waveforms.shape[1] // self.frame_size
-        return loudness[:, 1:expected_frames + 1].unsqueeze(1).to(waveforms.dtype)
+        return loudness_db[:, 1:expected_frames + 1].unsqueeze(1).to(waveforms.dtype)
 
 
 def perceptual_loudness(
         waveforms,
         sample_rate=24000,
         frame_size=96,
-        n_fft=768):
-    extractor = PerceptualLoudness(sample_rate, frame_size, n_fft).to(waveforms.device)
+        n_fft=768,
+        range_db=80.0):
+    extractor = PerceptualLoudness(sample_rate, frame_size, n_fft, range_db).to(waveforms.device)
     return extractor(waveforms)

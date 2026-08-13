@@ -17,10 +17,10 @@ class StreamingBufferTest(unittest.TestCase):
     def test_keeps_audio_source_and_phase_state(self):
         convertor = Convertor()
 
-        audio, source, phase = convertor.init_buffer(1920)
+        audio, source, phase = convertor.init_buffer(7680)
 
-        self.assertEqual(audio.shape, (1, 1920))
-        self.assertEqual(source.shape, (1, 1, 1920))
+        self.assertEqual(audio.shape, (1, 7680))
+        self.assertEqual(source.shape, (1, 1, 7680))
         self.assertEqual(phase.shape, (1, 1, 1))
 
     def test_rejects_buffer_not_aligned_to_decoder_frames(self):
@@ -30,9 +30,9 @@ class StreamingBufferTest(unittest.TestCase):
 
     def test_rejects_buffer_shorter_than_analysis_lookahead(self):
         convertor = Convertor()
-        self.assertEqual(convertor.lookahead_samples, 1440)
+        self.assertEqual(convertor.lookahead_samples, 5681)
         with self.assertRaises(ValueError):
-            convertor.init_buffer(960)
+            convertor.init_buffer(1920)
 
 
 if __name__ == "__main__":

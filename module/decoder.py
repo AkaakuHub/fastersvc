@@ -1,8 +1,9 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .common import DCC
 from .excitation import generate_excitation
 
 
@@ -17,16 +18,16 @@ class FiLM(nn.Module):
     def __init__(self, channels, cond_channels, condition_count=2):
         super().__init__()
         self.input_convs = nn.ModuleList([
-            DCC(cond_channels, cond_channels, 3, 1)
+            nn.Conv1d(cond_channels, cond_channels, 3, padding=1)
             for _ in range(condition_count)
         ])
         self.output_convs = nn.ModuleList([
-            DCC(cond_channels, channels * 2, 3, 1)
+            nn.Conv1d(cond_channels, channels * 2, 3, padding=1)
             for _ in range(condition_count)
         ])
         for convolution in (*self.input_convs, *self.output_convs):
-            nn.init.xavier_uniform_(convolution.conv.weight)
-            nn.init.zeros_(convolution.conv.bias)
+            nn.init.xavier_uniform_(convolution.weight)
+            nn.init.zeros_(convolution.bias)
 
     def forward(self, *conditions):
         if len(conditions) != len(self.input_convs):
@@ -51,9 +52,9 @@ class Downsample(nn.Module):
         self.factor = factor
 
         self.down_res = nn.Conv1d(input_channels, output_channels, 1)
-        self.c1 = DCC(input_channels, input_channels, 3, 1)
-        self.c2 = DCC(input_channels, input_channels, 3, 2)
-        self.c3 = DCC(input_channels, output_channels, 3, 4)
+        self.c1 = nn.Conv1d(input_channels, input_channels, 3, padding=1)
+        self.c2 = nn.Conv1d(input_channels, input_channels, 3, padding=2, dilation=2)
+        self.c3 = nn.Conv1d(input_channels, output_channels, 3, padding=4, dilation=4)
 
     def forward(self, x):
         x = F.interpolate(x, size=x.shape[-1] // self.factor, mode='nearest')
@@ -73,10 +74,10 @@ class Upsample(nn.Module):
         self.factor = factor
 
         self.residual = nn.Conv1d(input_channels, output_channels, 1)
-        self.c1 = DCC(input_channels, output_channels, 3, 1)
-        self.c2 = DCC(output_channels, output_channels, 3, 3)
-        self.c3 = DCC(output_channels, output_channels, 3, 9)
-        self.c4 = DCC(output_channels, output_channels, 3, 27)
+        self.c1 = nn.Conv1d(input_channels, output_channels, 3, padding=1)
+        self.c2 = nn.Conv1d(output_channels, output_channels, 3, padding=3, dilation=3)
+        self.c3 = nn.Conv1d(output_channels, output_channels, 3, padding=9, dilation=9)
+        self.c4 = nn.Conv1d(output_channels, output_channels, 3, padding=27, dilation=27)
         self.film = FiLM(output_channels, cond_channels)
 
     @staticmethod
@@ -84,10 +85,10 @@ class Upsample(nn.Module):
         return shift + scale * x
 
     def forward(self, x, source_condition, loudness_condition):
-        residual = F.interpolate(x, scale_factor=self.factor, mode='linear', align_corners=False)
+        residual = F.interpolate(x, scale_factor=self.factor, mode='nearest')
         residual = self.residual(residual)
         x = F.leaky_relu(x, 0.2)
-        x = F.interpolate(x, scale_factor=self.factor, mode='linear', align_corners=False)
+        x = F.interpolate(x, scale_factor=self.factor, mode='nearest')
         x = self.c1(x)
         shift, scale = self.film(source_condition, loudness_condition)
         x = self.affine(x, shift, scale)
@@ -121,6 +122,13 @@ class Decoder(nn.Module):
         self.loudness_frame_size = loudness_frame_size
         self.loudness_n_fft = 768
         self.content_channels = content_channels
+        if self.frame_size != math.prod(factors):
+            raise ValueError("decoder factors must multiply to its frame size")
+        output_hops = [
+            self.frame_size // math.prod(factors[:index + 1])
+            for index in range(len(factors))
+        ]
+        self.lookahead_samples = sum(40 * hop for hop in output_hops) + 1
 
         self.source_downs = nn.ModuleList([])
         self.loudness_downs = nn.ModuleList([])
@@ -151,12 +159,12 @@ class Decoder(nn.Module):
                 factor,
             ))
         # output layer
-        self.output_layer = DCC(channels[-1], 1, 3, 1)
+        self.output_layer = nn.Conv1d(channels[-1], 1, 3, padding=1)
         self.apply(initialize_wavegrad_convolution)
         for upsample in self.ups:
             for convolution in (*upsample.film.input_convs, *upsample.film.output_convs):
-                nn.init.xavier_uniform_(convolution.conv.weight)
-                nn.init.zeros_(convolution.conv.bias)
+                nn.init.xavier_uniform_(convolution.weight)
+                nn.init.zeros_(convolution.bias)
 
     def generate_source(self, p):
         initial_phase = torch.rand(p.shape[0], 1, 1, device=p.device, dtype=p.dtype)
