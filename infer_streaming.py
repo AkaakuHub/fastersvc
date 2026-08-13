@@ -25,7 +25,7 @@ parser.add_argument('-d', '--device', default='cpu')
 parser.add_argument('-sr', '--sample-rate', default=24000, type=int)
 parser.add_argument('-ig', '--input-gain', default=0, type=float)
 parser.add_argument('-og', '--output-gain', default=0, type=float)
-parser.add_argument('-pe', '--pitch-estimation', default='dio', choices=['dio', 'harvest', 'default'])
+parser.add_argument('-pe', '--pitch-estimation', default='dio', choices=['dio', 'harvest'])
 
 args = parser.parse_args()
 

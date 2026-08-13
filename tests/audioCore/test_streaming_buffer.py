@@ -2,12 +2,19 @@ import unittest
 
 import torch
 
-from module.convertor import DEFAULT_REALTIME_PITCH_ALGORITHM, Convertor
+from module.convertor import (
+    DEFAULT_OFFLINE_PITCH_ALGORITHM,
+    DEFAULT_REALTIME_PITCH_ALGORITHM,
+    Convertor,
+)
 
 
 class StreamingBufferTest(unittest.TestCase):
     def test_uses_world_dio_for_realtime_pitch(self):
         self.assertEqual(DEFAULT_REALTIME_PITCH_ALGORITHM, "dio")
+
+    def test_uses_world_harvest_for_offline_pitch(self):
+        self.assertEqual(DEFAULT_OFFLINE_PITCH_ALGORITHM, "harvest")
 
     def test_target_encoding_does_not_retain_training_graphs(self):
         convertor = Convertor()
@@ -25,6 +32,8 @@ class StreamingBufferTest(unittest.TestCase):
         self.assertEqual(audio.shape, (1, 7680))
         self.assertEqual(source.shape, (1, 1, 7680))
         self.assertEqual(phase.shape, (1, 1, 1))
+        self.assertGreaterEqual(phase.item(), 0)
+        self.assertLess(phase.item(), 1)
 
     def test_rejects_buffer_not_aligned_to_decoder_frames(self):
         convertor = Convertor()

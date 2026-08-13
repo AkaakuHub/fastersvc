@@ -5,6 +5,7 @@ import torch
 
 from module.convertor import Convertor
 from module.index import IndexForOnnx
+from module.pitch_estimator import PitchEstimator
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--outputs', default="./onnx/")
@@ -24,10 +25,16 @@ os.makedirs(args.outputs, exist_ok=True)
 opset_version = args.opset
 
 print("Exporting pitch estimator")
-fft_bin = convertor.pitch_estimator.n_fft // 2 + 1
+pitch_estimator = PitchEstimator().eval()
+pitch_estimator.load_state_dict(torch.load(
+    os.path.join(args.models, "pitch_estimator.pt"),
+    map_location="cpu",
+    weights_only=True,
+))
+fft_bin = pitch_estimator.n_fft // 2 + 1
 dummy_input = torch.randn(1, fft_bin, 100)
 torch.onnx.export(
-        convertor.pitch_estimator,
+        pitch_estimator,
         dummy_input,
         os.path.join(args.outputs, "pitch_estimator.onnx"),
         opset_version=opset_version,
