@@ -58,12 +58,12 @@ if args.log_interval <= 0:
 WEIGHT_ADV = args.weight_adv
 WEIGHT_STFT = args.weight_stft
 
-def load_or_init_models(device=torch.device('cpu')):
+def load_or_init_models(device=torch.device('cpu'), load_model_files=True):
     dec = Decoder().to(device)
     dis = Discriminator().to(device)
-    if os.path.exists(args.decoder_path):
+    if load_model_files and os.path.exists(args.decoder_path):
         dec.load_state_dict(torch.load(args.decoder_path, map_location=device, weights_only=True))
-    if os.path.exists(args.discriminator_path):
+    if load_model_files and os.path.exists(args.discriminator_path):
         dis.load_state_dict(torch.load(args.discriminator_path, map_location=device, weights_only=True))
     return dec, dis
 
@@ -97,8 +97,8 @@ def save_models(dec, dis, opt_dec, opt_dis, scaler, step_count):
         "scaler": scaler.state_dict(),
         "step": step_count,
     }, args.training_state_path)
-    atomic_save(dec.state_dict(), args.decoder_path)
-    atomic_save(dis.state_dict(), args.discriminator_path)
+    atomic_save(model_state(dec), args.decoder_path)
+    atomic_save(model_state(dis), args.discriminator_path)
     print("Complete!")
 
 
@@ -116,7 +116,8 @@ else:
     device = torch.device(args.device)
 is_primary_process = process_rank == 0
 
-Dec, Dis = load_or_init_models(device)
+training_state_exists = os.path.exists(args.training_state_path)
+Dec, Dis = load_or_init_models(device, load_model_files=not training_state_exists)
 if distributed:
     Dec = DistributedDataParallel(Dec, device_ids=[device.index])
     Dis = DistributedDataParallel(Dis, device_ids=[device.index])
@@ -137,7 +138,7 @@ spectral_loss = MultiResolutionSTFTLoss().to(device)
 loudness_extractor = PerceptualLoudness().to(device)
 
 step_count = 0
-if os.path.exists(args.training_state_path):
+if training_state_exists:
     training_state = torch.load(args.training_state_path, map_location=device, weights_only=True)
     load_model_state(Dec, training_state["decoder"])
     load_model_state(Dis, training_state["discriminator"])
