@@ -113,11 +113,13 @@ class Convertor(nn.Module):
         p = 440 * 2 ** (scale / 12)
 
         current_frame_count = chunk_size // self.frame_size
+        previous_f0 = p[:, :, -current_frame_count - 1:-current_frame_count]
         current_source, new_phase_buffer = generate_excitation(
                 p[:, :, -current_frame_count:],
                 phase_buffer,
                 self.frame_size,
-                self.sample_rate)
+                self.sample_rate,
+                previous_f0=previous_f0)
         source_signal = torch.cat([source_buffer, current_source], dim=2)
         
         # synthesize new voice

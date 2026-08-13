@@ -17,7 +17,7 @@ class ExcitationTest(unittest.TestCase):
             noise=noise,
         )
 
-        self.assertTrue(torch.all(excitation[:, :, 4:] == 0.3))
+        self.assertTrue(torch.all(excitation[:, :, 6:] == 0.3))
         self.assertTrue(torch.all(excitation[:, :, :4] < 0.3))
 
     def test_preserves_phase_across_adjacent_chunks(self):
@@ -38,6 +38,34 @@ class ExcitationTest(unittest.TestCase):
         )
         full, _ = generate_excitation(
             torch.full((1, 1, 4), 200.0),
+            frame_size=4,
+            sample_rate=8000,
+            noise=torch.zeros(1, 1, 16),
+        )
+
+        self.assertTrue(torch.allclose(torch.cat([first, second], dim=2), full, atol=1e-6))
+
+    def test_preserves_pitch_interpolation_across_changing_chunks(self):
+        first_pitch = torch.full((1, 1, 2), 200.0)
+        second_pitch = torch.full((1, 1, 2), 400.0)
+        first, phase = generate_excitation(
+            first_pitch,
+            phase=0.3,
+            frame_size=4,
+            sample_rate=8000,
+            noise=torch.zeros(1, 1, 8),
+        )
+        second, _ = generate_excitation(
+            second_pitch,
+            phase=phase,
+            frame_size=4,
+            sample_rate=8000,
+            noise=torch.zeros(1, 1, 8),
+            previous_f0=first_pitch[:, :, -1:],
+        )
+        full, _ = generate_excitation(
+            torch.cat([first_pitch, second_pitch], dim=2),
+            phase=0.3,
             frame_size=4,
             sample_rate=8000,
             noise=torch.zeros(1, 1, 16),
