@@ -9,16 +9,18 @@ from torchaudio.functional import resample
 from tqdm import tqdm
 
 from module.common import compute_f0
+from module.preprocessing import split_complete_segments, trim_silence
 
 
 parser = argparse.ArgumentParser(description="preprocess")
 
 parser.add_argument('input')
 parser.add_argument('-o', '--output', default='dataset_cache')
-parser.add_argument('-len', '--length', default=48000, type=int)
+parser.add_argument('-len', '--length', default=24000, type=int)
 parser.add_argument('--num-speakers', default=8192, type=int)
 parser.add_argument('-m', '--max-files', default=-1, type=int)
 parser.add_argument('--pitch-algorithm', default='harvest', choices=['harvest', 'dio'])
+parser.add_argument('--trim-top-db', default=30.0, type=float)
 parser.add_argument('--speaker-infomation', default='speaker_infomation.json')
 
 args = parser.parse_args()
@@ -45,15 +47,9 @@ for path in tqdm(dataset_files):
     wf, sr = torchaudio.load(path)
     wf = wf.mean(dim=0, keepdim=True)
     wf = resample(wf, sr, 24000)
-    # chunk
-    chunks = wf.split(args.length, dim=1)
+    wf = trim_silence(wf, top_db=args.trim_top_db)
+    chunks = split_complete_segments(wf, args.length)
     for chunk in chunks:
-        if chunk.shape[1] < args.length:
-            # padding
-            pad_len = args.length - chunk.shape[1]
-            pad = torch.zeros(1, pad_len)
-            chunk = torch.cat([chunk, pad], dim=1)
-
         # f0
         f0 = compute_f0(chunk, algorithm=args.pitch_algorithm)
 
