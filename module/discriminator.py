@@ -1,143 +1,101 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
-def get_padding(kernel_size, dilation=1):
-    return int((kernel_size*dilation - dilation)/2)
+def normalized_convolution(
+        input_channels,
+        output_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        groups=1):
+    convolution = nn.Conv1d(
+        input_channels,
+        output_channels,
+        kernel_size,
+        stride,
+        padding,
+        groups=groups,
+    )
+    convolution.weight.data.normal_(0.0, 0.02)
+    return nn.utils.weight_norm(convolution)
 
 
-class DiscriminatorP(nn.Module):
-    def __init__(self, period, kernel_size=5, stride=3, channels=16, num_layers=4, max_channels=256, use_spectral_norm=False):
+class ScaleDiscriminator(nn.Module):
+    def __init__(
+            self,
+            channels=16,
+            downsample_scales=(4, 4, 4, 4),
+            max_channels=512):
         super().__init__()
-        self.period = period
-        norm_f = nn.utils.weight_norm if use_spectral_norm == False else nn.utils.spectral_norm
-        
-        k = kernel_size
-        s = stride
-        c = channels
+        self.layers = nn.ModuleList([
+            nn.Sequential(
+                nn.ReflectionPad1d(7),
+                normalized_convolution(1, channels, 15),
+                nn.LeakyReLU(0.2),
+            ),
+        ])
+        input_channels = channels
+        for scale in downsample_scales:
+            output_channels = min(input_channels * scale, max_channels)
+            self.layers.append(nn.Sequential(
+                normalized_convolution(
+                    input_channels,
+                    output_channels,
+                    scale * 10 + 1,
+                    stride=scale,
+                    padding=scale * 5,
+                    groups=input_channels // 4,
+                ),
+                nn.LeakyReLU(0.2),
+            ))
+            input_channels = output_channels
+        output_channels = min(input_channels * 2, max_channels)
+        self.layers.extend([
+            nn.Sequential(
+                normalized_convolution(input_channels, output_channels, 5, padding=2),
+                nn.LeakyReLU(0.2),
+            ),
+            normalized_convolution(output_channels, 1, 3, padding=1),
+        ])
 
-        convs = [nn.Conv2d(1, c, (k, 1), (s, 1), (get_padding(5, 1), 0))]
-        for i in range(num_layers):
-            c_next = min(c * 2, max_channels)
-            convs.append(nn.Conv2d(c, c_next, (k, 1), (s, 1), (get_padding(5, 1), 0)))
-            c = c_next
-        self.convs = nn.ModuleList([norm_f(c) for c in convs])
-        self.post = norm_f(nn.Conv2d(c, 1, (3, 1), 1, (1, 0)))
-
-    def forward(self, x):
-        fmap = []
-
-        # 1d to 2d
-        b, c, t = x.shape
-        if t % self.period != 0:
-            n_pad = self.period - (t % self.period)
-            x = F.pad(x, (0, n_pad), "reflect")
-            t = t + n_pad
-        x = x.view(b, c, t // self.period, self.period)
-
-        for l in self.convs:
-            x = l(x)
-            x = F.leaky_relu(x, 0.1)
-            fmap.append(x)
-        x = self.post(x)
-        fmap.append(x)
-        return x, fmap
-
-
-class MultiPeriodicDiscriminator(nn.Module):
-    def __init__(self, periods, channels, max_channels, num_layers):
-        super().__init__()
-        self.sub_discs = nn.ModuleList([])
-        for p in periods:
-            self.sub_discs.append(DiscriminatorP(p,
-                                                 channels=channels,
-                                                 max_channels=max_channels,
-                                                 num_layers=num_layers))
-
-    def forward(self, x):
-        feats = []
-        logits = []
-        for d in self.sub_discs:
-            logit, fmap = d(x)
-            logits.append(logit)
-            feats += fmap
-        return logits, feats
-
-
-class DiscriminatorS(nn.Module):
-    def __init__(self, channels=32, num_layers=6, max_channels=256, max_groups=8, use_spectral_norm=False):
-        super().__init__()
-        norm_f = nn.utils.weight_norm if use_spectral_norm == False else nn.utils.spectral_norm
-
-        c = channels
-        g = 1
-        convs = [nn.Conv1d(1, c, 15, 1, 7)]
-        for _ in range(num_layers):
-            g = min(g * 2, max_groups)
-            c_next = min(c * 2, max_channels)
-            convs.append(nn.Conv1d(c, c_next, 41, 2, 20, groups=g))
-            c = c_next
-
-        self.convs = nn.ModuleList([norm_f(c) for c in convs])
-        self.post = norm_f(nn.Conv1d(c, 1, 3, 1, 1))
-
-    def forward(self, x):
-        fmap = []
-        fmap.append(x)
-        for l in self.convs:
-            x = l(x)
-            x = F.leaky_relu(x, 0.1)
-            fmap.append(x)
-        x = self.post(x)
-        fmap.append(x)
-        return x, fmap
+    def forward(self, waveform):
+        features = []
+        for layer in self.layers:
+            waveform = layer(waveform)
+            features.append(waveform)
+        return waveform, features
 
 
 class MultiScaleDiscriminator(nn.Module):
-    def __init__(self, num_scales, channels, max_channels, max_groups, num_layers):
+    def __init__(
+            self,
+            num_scales=3,
+            channels=16,
+            downsample_scales=(4, 4, 4, 4),
+            max_channels=512):
         super().__init__()
         self.sub_discs = nn.ModuleList([
-            DiscriminatorS(
-                channels,
-                num_layers,
-                max_channels,
-                max_groups,
-                use_spectral_norm=index == 0,
-            )
-            for index in range(num_scales)
+            ScaleDiscriminator(channels, downsample_scales, max_channels)
+            for _ in range(num_scales)
         ])
-        self.downsample = nn.AvgPool1d(4, 2, padding=2)
+        self.downsample = nn.AvgPool1d(
+            kernel_size=4,
+            stride=2,
+            padding=1,
+            count_include_pad=False,
+        )
 
-    def forward(self, x):
-        feats = []
+    def forward(self, waveform):
+        features = []
         logits = []
-        for d in self.sub_discs:
-            logit, fmap = d(x)
+        for discriminator in self.sub_discs:
+            logit, scale_features = discriminator(waveform)
             logits.append(logit)
-            feats += fmap
-            x = self.downsample(x)
-        return logits, feats
+            features.extend(scale_features)
+            waveform = self.downsample(waveform)
+        return logits, features
 
 
-class Discriminator(nn.Module):
-    def __init__(self,
-                 num_scales=3,
-                 periods=(),
-                 mpd_num_layers=5,
-                 msd_num_layers=7,
-                 mpd_channels=16,
-                 msd_channels=32,
-                 mpd_max_channels=256,
-                 msd_max_groups=8,
-                 msd_max_channels=256,
-                 ):
-        super().__init__()
-        self.MPD = MultiPeriodicDiscriminator(periods, mpd_channels, mpd_max_channels, mpd_num_layers)
-        self.MSD = MultiScaleDiscriminator(num_scales, msd_channels, msd_max_channels, msd_max_groups, msd_num_layers)
-
-    def forward(self, x):
-        x = x.unsqueeze(1)
-        mpd_logits, mpd_feats = self.MPD(x)
-        msd_logits, msd_feats = self.MSD(x)
-        return mpd_logits + msd_logits, mpd_feats + msd_feats
+class Discriminator(MultiScaleDiscriminator):
+    def forward(self, waveform):
+        return super().forward(waveform.unsqueeze(1))

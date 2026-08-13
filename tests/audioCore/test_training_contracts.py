@@ -108,13 +108,20 @@ class TrainingContractsTest(unittest.TestCase):
             num_scales=3,
             channels=8,
             max_channels=32,
-            max_groups=4,
-            num_layers=2,
+            downsample_scales=(4, 4),
         )
         logits, _ = discriminator(waveform)
         lengths = [logit.shape[-1] for logit in logits]
         self.assertGreater(lengths[0], lengths[1])
         self.assertGreater(lengths[1], lengths[2])
+
+    def test_discriminator_uses_melgan_downsampling_contract(self):
+        discriminator = MultiScaleDiscriminator()
+        first_downsample = discriminator.sub_discs[0].layers[1][0]
+
+        self.assertEqual(first_downsample.stride, (4,))
+        self.assertEqual(first_downsample.groups, 4)
+        self.assertEqual(discriminator.downsample.padding, (1,))
 
     @patch("module.common.pw.harvest")
     def test_batched_harvest_does_not_call_dio(self, harvest):
