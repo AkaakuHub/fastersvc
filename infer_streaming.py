@@ -25,6 +25,7 @@ parser.add_argument('-d', '--device', default='cpu')
 parser.add_argument('-sr', '--sample-rate', default=24000, type=int)
 parser.add_argument('-ig', '--input-gain', default=0, type=float)
 parser.add_argument('-og', '--output-gain', default=0, type=float)
+parser.add_argument('-pe', '--pitch-estimation', default='dio', choices=['dio', 'harvest', 'default'])
 
 args = parser.parse_args()
 
@@ -89,7 +90,8 @@ while True:
             buffer,
             tgt,
             args.pitch_shift, 
-            alpha=args.alpha
+            alpha=args.alpha,
+            pitch_estimation=args.pitch_estimation,
             )
     chunk = gain(chunk, args.output_gain)
 

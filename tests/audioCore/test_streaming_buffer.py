@@ -2,10 +2,13 @@ import unittest
 
 import torch
 
-from module.convertor import Convertor
+from module.convertor import DEFAULT_REALTIME_PITCH_ALGORITHM, Convertor
 
 
 class StreamingBufferTest(unittest.TestCase):
+    def test_uses_world_dio_for_realtime_pitch(self):
+        self.assertEqual(DEFAULT_REALTIME_PITCH_ALGORITHM, "dio")
+
     def test_target_encoding_does_not_retain_training_graphs(self):
         convertor = Convertor()
         waveform = torch.randn(1, 1920, requires_grad=True)

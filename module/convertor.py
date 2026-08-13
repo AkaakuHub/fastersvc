@@ -11,6 +11,9 @@ from .common import match_features, compute_f0
 from .excitation import generate_excitation
 
 
+DEFAULT_REALTIME_PITCH_ALGORITHM = "dio"
+
+
 # for realtime inferencing
 class Convertor(nn.Module):
     def __init__(self):
@@ -74,7 +77,15 @@ class Convertor(nn.Module):
     
     # convert voice with buffer for realtime inferencing
     @torch.inference_mode()
-    def convert_rt(self, chunk, buffer, tgt, pitch_shift, k=4, alpha=0, pitch_estimation='default'):
+    def convert_rt(
+            self,
+            chunk,
+            buffer,
+            tgt,
+            pitch_shift,
+            k=4,
+            alpha=0,
+            pitch_estimation=DEFAULT_REALTIME_PITCH_ALGORITHM):
         k = int(k)
 
         # extpand buffer variables
