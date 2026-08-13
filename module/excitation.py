@@ -11,11 +11,11 @@ def interpolate_f0(f0, frame_size, previous_f0=None):
 
     frame_starts = torch.cat([previous_f0, f0[:, :, :-1]], dim=2)
     interpolation = torch.arange(
-        frame_size,
+        1,
+        frame_size + 1,
         device=f0.device,
         dtype=f0.dtype,
-    ).view(1, 1, 1, frame_size) * (2.0 / frame_size)
-    interpolation = interpolation.clamp_max(1.0)
+    ).view(1, 1, 1, frame_size) / frame_size
     audio_rate_f0 = (
         frame_starts.unsqueeze(3)
         + (f0 - frame_starts).unsqueeze(3) * interpolation
@@ -41,8 +41,11 @@ def generate_excitation(
     audio_rate_f0 = interpolate_f0(f0, frame_size, previous_f0)
     voiced = (audio_rate_f0 >= voiced_threshold).to(f0.dtype)
 
-    integrated_phase = torch.cumsum(audio_rate_f0 / sample_rate, dim=2)
-    integrated_phase = integrated_phase - integrated_phase[:, :, :1]
+    phase_increments = audio_rate_f0 / sample_rate
+    integrated_phase = torch.cat([
+        torch.zeros_like(phase_increments[:, :, :1]),
+        torch.cumsum(phase_increments[:, :, :-1], dim=2),
+    ], dim=2)
     cycle_phase = (integrated_phase + phase) % 1
     sine = torch.sin(2 * math.pi * cycle_phase)
 
@@ -53,5 +56,5 @@ def generate_excitation(
 
     noise_scale = voiced * voiced_noise_std + (1 - voiced) * unvoiced_noise_std
     excitation = voiced * sine_amplitude * sine + noise_scale * noise
-    next_phase = (cycle_phase[:, :, -1:] + audio_rate_f0[:, :, -1:] / sample_rate) % 1
+    next_phase = (phase + phase_increments.sum(dim=2, keepdim=True)) % 1
     return excitation, next_phase

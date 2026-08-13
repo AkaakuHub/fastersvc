@@ -2,10 +2,24 @@ import unittest
 
 import torch
 
-from module.excitation import generate_excitation
+from module.excitation import generate_excitation, interpolate_f0
 
 
 class ExcitationTest(unittest.TestCase):
+    def test_interpolates_pitch_across_the_entire_frame(self):
+        pitch = torch.tensor([[[200.0]]])
+
+        interpolated = interpolate_f0(
+            pitch,
+            frame_size=4,
+            previous_f0=torch.tensor([[[100.0]]]),
+        )
+
+        self.assertTrue(torch.allclose(
+            interpolated,
+            torch.tensor([[[125.0, 150.0, 175.0, 200.0]]]),
+        ))
+
     def test_uses_sine_for_voiced_and_noise_for_unvoiced_frames(self):
         f0 = torch.tensor([[[100.0, 0.0]]])
         noise = torch.ones(1, 1, 8)
@@ -17,8 +31,8 @@ class ExcitationTest(unittest.TestCase):
             noise=noise,
         )
 
-        self.assertTrue(torch.all(excitation[:, :, 6:] == 0.3))
-        self.assertTrue(torch.all(excitation[:, :, :4] < 0.3))
+        self.assertAlmostEqual(excitation[:, :, -1:].item(), 0.3)
+        self.assertTrue(torch.all(excitation[:, :, :-1] < 0.3))
 
     def test_preserves_phase_across_adjacent_chunks(self):
         f0 = torch.full((1, 1, 2), 200.0)
