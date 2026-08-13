@@ -24,7 +24,7 @@ class ScaleDiscriminator(nn.Module):
     def __init__(
             self,
             channels=16,
-            downsample_scales=(4, 4, 4, 4),
+            downsample_scales=(4, 4, 4),
             max_channels=512):
         super().__init__()
         self.layers = nn.ModuleList([
@@ -71,7 +71,7 @@ class MultiScaleDiscriminator(nn.Module):
             self,
             num_scales=3,
             channels=16,
-            downsample_scales=(4, 4, 4, 4),
+            downsample_scales=(4, 4, 4),
             max_channels=512):
         super().__init__()
         self.sub_discs = nn.ModuleList([

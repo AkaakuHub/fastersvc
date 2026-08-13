@@ -43,6 +43,21 @@ def learning_rate_at_step(initial_learning_rate, step, interval=100000, decay=0.
     return initial_learning_rate * decay ** (step // interval)
 
 
+def discriminator_learning_rate_at_step(
+        initial_learning_rate,
+        step,
+        start_step,
+        interval=100000,
+        decay=0.5):
+    discriminator_step = max(0, step - start_step)
+    return learning_rate_at_step(
+        initial_learning_rate,
+        discriminator_step,
+        interval,
+        decay,
+    )
+
+
 def set_optimizer_learning_rate(optimizer, learning_rate):
     for parameter_group in optimizer.param_groups:
         parameter_group["lr"] = learning_rate

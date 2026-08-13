@@ -19,6 +19,7 @@ from module.training import (
     DEFAULT_DECODER_LEARNING_RATE,
     atomic_save,
     crop_aligned_batch,
+    discriminator_learning_rate_at_step,
     learning_rate_at_step,
     set_optimizer_learning_rate,
     step_scaled_optimizer,
@@ -117,9 +118,14 @@ while step_count < args.steps:
             wave = wave.to(device, non_blocking=True)
             f0 = f0.to(device, non_blocking=True)
             wave, f0 = crop_aligned_batch(wave, f0)
-            learning_rate = learning_rate_at_step(args.learning_rate, step_count)
-            set_optimizer_learning_rate(OptDec, learning_rate)
-            set_optimizer_learning_rate(OptDis, learning_rate)
+            generator_learning_rate = learning_rate_at_step(args.learning_rate, step_count)
+            discriminator_learning_rate = discriminator_learning_rate_at_step(
+                args.learning_rate,
+                step_count,
+                args.discriminator_start_step,
+            )
+            set_optimizer_learning_rate(OptDec, generator_learning_rate)
+            set_optimizer_learning_rate(OptDis, discriminator_learning_rate)
 
             with torch.no_grad():
                 z = CE.encode(wave)

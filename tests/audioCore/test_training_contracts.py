@@ -17,6 +17,7 @@ from module.training import (
     DEFAULT_DECODER_LEARNING_RATE,
     atomic_save,
     crop_aligned_batch,
+    discriminator_learning_rate_at_step,
     learning_rate_at_step,
     step_scaled_optimizer,
     training_data_loader,
@@ -58,6 +59,9 @@ class TrainingContractsTest(unittest.TestCase):
         self.assertEqual(learning_rate_at_step(0.001, 99999), 0.001)
         self.assertEqual(learning_rate_at_step(0.001, 100000), 0.0005)
         self.assertEqual(learning_rate_at_step(0.001, 200000), 0.00025)
+        self.assertEqual(discriminator_learning_rate_at_step(0.001, 100000, 100000), 0.001)
+        self.assertEqual(discriminator_learning_rate_at_step(0.001, 199999, 100000), 0.001)
+        self.assertEqual(discriminator_learning_rate_at_step(0.001, 200000, 100000), 0.0005)
 
     @patch("module.training.torch.randint")
     def test_crops_waveform_and_pitch_at_the_same_frame(self, randint):
@@ -121,6 +125,7 @@ class TrainingContractsTest(unittest.TestCase):
 
         self.assertEqual(first_downsample.stride, (4,))
         self.assertEqual(first_downsample.groups, 4)
+        self.assertEqual(len(discriminator.sub_discs[0].layers), 6)
         self.assertEqual(discriminator.downsample.padding, (1,))
 
     @patch("module.common.pw.harvest")
