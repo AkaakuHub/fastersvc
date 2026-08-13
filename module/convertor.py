@@ -51,11 +51,14 @@ class Convertor(nn.Module):
             tgt,
             pitch_shift=0,
             k=4,
-            alpha=0,
+            retrieval_ratio=0,
             pitch_estimation_algorithm=DEFAULT_OFFLINE_PITCH_ALGORITHM):
         z = self.content_encoder.encode(wave)
 
-        z = match_features(z, tgt, k, alpha)
+        if retrieval_ratio > 0:
+            if tgt is None:
+                raise ValueError("target features are required when retrieval is enabled")
+            z = match_features(z, tgt, k, retrieval_ratio)
         l = self.loudness_extractor(wave)
         p = compute_f0(wave, algorithm=pitch_estimation_algorithm)
         scale = 12 * torch.log2(p / 440)
@@ -84,7 +87,7 @@ class Convertor(nn.Module):
             tgt,
             pitch_shift,
             k=4,
-            alpha=0,
+            retrieval_ratio=0,
             pitch_estimation=DEFAULT_REALTIME_PITCH_ALGORITHM):
         k = int(k)
 
@@ -105,7 +108,10 @@ class Convertor(nn.Module):
         e = self.loudness_extractor(x)
 
         # convert style
-        z = match_features(z, tgt, k, alpha)
+        if retrieval_ratio > 0:
+            if tgt is None:
+                raise ValueError("target features are required when retrieval is enabled")
+            z = match_features(z, tgt, k, retrieval_ratio)
 
         # pitch shift
         scale = 12 * torch.log2(p / 440)

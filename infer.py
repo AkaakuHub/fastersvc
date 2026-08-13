@@ -17,7 +17,7 @@ parser.add_argument('-m', '--models', default='./models/')
 parser.add_argument('-p', '--pitch-shift', default=0, type=float)
 parser.add_argument('-t', '--target', default='./target.wav')
 parser.add_argument('-d', '--device', default='cpu')
-parser.add_argument('-a', '--alpha', default=0, type=float)
+parser.add_argument('-r', '--retrieval-ratio', default=0, type=float)
 parser.add_argument('-idx', '--index', default='NONE')
 parser.add_argument('--normalize', action='store_true')
 parser.add_argument('-pe', '--pitch-estimation', default='harvest', choices=['dio', 'harvest'])
@@ -36,7 +36,9 @@ convertor.to(device)
 os.makedirs(args.outputs, exist_ok=True)
 
 
-if args.index == 'NONE':
+if args.retrieval_ratio == 0:
+    tgt = None
+elif args.index == 'NONE':
     print("Loading target...")
     wf, sr = torchaudio.load(args.target)
     wf = wf.to(device)
@@ -62,7 +64,8 @@ for i, path in enumerate(paths):
     wf = wf.mean(dim=0, keepdim=True)
     original_length = wf.shape[1]
     if args.no_chunking:
-        wf = convertor.convert(wf.to(device), tgt, args.pitch_shift, alpha=args.alpha,
+        wf = convertor.convert(wf.to(device), tgt, args.pitch_shift,
+                               retrieval_ratio=args.retrieval_ratio,
                                pitch_estimation_algorithm=args.pitch_estimation)
         wf = wf.cpu()
     else:
@@ -82,7 +85,7 @@ for i, path in enumerate(paths):
                     buffer,
                     tgt,
                     args.pitch_shift,
-                    alpha=args.alpha,
+                    retrieval_ratio=args.retrieval_ratio,
                     pitch_estimation=args.pitch_estimation,
                     )
             results.append(converted_chunk.cpu())

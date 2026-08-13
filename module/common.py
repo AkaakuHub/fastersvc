@@ -25,18 +25,18 @@ def spectrogram(wave, n_fft, hop_size):
 # source: [BatchSize, Channels, Length]
 # reference: [BatchSize, Channels, Length]
 # k: int
-# alpha: float (0.0 ~ 1.0)
+# retrieval_ratio: float (0.0 ~ 1.0)
 # metrics: one of ['IP', 'L2', 'cos'], 'IP' means innner product, 'L2' means euclid distance, 'cos' means cosine similarity
 # Output: [BatchSize, Channels, Length]
-def match_features(source, reference, k=4, alpha=0.0, metrics='cos'):
+def match_features(source, reference, k=4, retrieval_ratio=1.0, metrics='cos'):
     if source.ndim != 3 or reference.ndim != 3:
         raise ValueError("source and reference must have shape [batch, channels, frames]")
     if source.shape[0] != reference.shape[0] or source.shape[1] != reference.shape[1]:
         raise ValueError("source and reference batch and channel dimensions must match")
     if not 1 <= k <= reference.shape[2]:
         raise ValueError("k must not exceed the number of reference frames")
-    if not 0 <= alpha <= 1:
-        raise ValueError("alpha must be between 0 and 1")
+    if not 0 <= retrieval_ratio <= 1:
+        raise ValueError("retrieval ratio must be between 0 and 1")
     if metrics not in {'IP', 'L2', 'cos'}:
         raise ValueError(f"unsupported feature metric: {metrics}")
 
@@ -59,7 +59,7 @@ def match_features(source, reference, k=4, alpha=0.0, metrics='cos'):
     gather_indices = nearest_indices.unsqueeze(3).expand(batch_size, source_frames, k, channels)
     result = torch.gather(candidates, 2, gather_indices).mean(dim=2)
     result = result.transpose(1, 2)
-    return result * (1-alpha) + input_data * alpha
+    return result * retrieval_ratio + input_data * (1 - retrieval_ratio)
 
 
 # Dlilated Causal Convolution

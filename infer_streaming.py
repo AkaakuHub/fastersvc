@@ -15,7 +15,7 @@ parser.add_argument('-i', '--input', default=0, type=int)
 parser.add_argument('-o', '--output', default=0, type=int)
 parser.add_argument('-l', '--loopback', default=-1, type=int)
 parser.add_argument('-p', '--pitch-shift', default=0, type=float)
-parser.add_argument('-a', '--alpha', default=0., type=float)
+parser.add_argument('-r', '--retrieval-ratio', default=0.0, type=float)
 parser.add_argument('-idx', '--index', default='NONE')
 parser.add_argument('-m', '--models', default='./models/')
 parser.add_argument('-t', '--target', default='NONE')
@@ -38,7 +38,9 @@ convertor.to(device)
 if args.sample_rate != INTERNAL_SR:
     raise ValueError(f"--sample-rate must be {INTERNAL_SR}; chunk-wise resampling corrupts stream boundaries")
 
-if args.index == 'NONE':
+if args.retrieval_ratio == 0:
+    tgt = None
+elif args.index == 'NONE':
     print("Loading target...")
     wf, sr = torchaudio.load(args.target)
     wf = wf.to(device)
@@ -90,7 +92,7 @@ while True:
             buffer,
             tgt,
             args.pitch_shift, 
-            alpha=args.alpha,
+            retrieval_ratio=args.retrieval_ratio,
             pitch_estimation=args.pitch_estimation,
             )
     chunk = gain(chunk, args.output_gain)
