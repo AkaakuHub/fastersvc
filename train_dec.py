@@ -13,7 +13,17 @@ from module.audio import PerceptualLoudness
 from module.content_encoder import ContentEncoder
 from module.decoder import Decoder
 from module.discriminator import Discriminator
-from module.training import DEFAULT_DECODER_LEARNING_RATE, atomic_save, crop_aligned_batch, learning_rate_at_step, set_optimizer_learning_rate, step_scaled_optimizer, training_data_loader
+from module.training import (
+    DECODER_GRADIENT_NORM,
+    DECODER_OPTIMIZER_EPSILON,
+    DEFAULT_DECODER_LEARNING_RATE,
+    atomic_save,
+    crop_aligned_batch,
+    learning_rate_at_step,
+    set_optimizer_learning_rate,
+    step_scaled_optimizer,
+    training_data_loader,
+)
 
 
 parser = argparse.ArgumentParser(description="train voice conversion model")
@@ -76,8 +86,8 @@ dl = training_data_loader(ds, args.batch_size, args.workers, device)
 
 scaler = torch.amp.GradScaler(device.type, enabled=args.fp16)
 
-OptDec = optim.Adam(Dec.parameters(), lr=args.learning_rate)
-OptDis = optim.Adam(Dis.parameters(), lr=args.learning_rate)
+OptDec = optim.Adam(Dec.parameters(), lr=args.learning_rate, eps=DECODER_OPTIMIZER_EPSILON)
+OptDis = optim.Adam(Dis.parameters(), lr=args.learning_rate, eps=DECODER_OPTIMIZER_EPSILON)
 
 spectral_loss = MultiResolutionSTFTLoss().to(device)
 loudness_extractor = PerceptualLoudness().to(device)
@@ -127,7 +137,7 @@ while step_count < args.steps:
                 loss_g = loss_stft * WEIGHT_STFT
             require_finite("generator loss", loss_g)
 
-        step_scaled_optimizer(loss_g, OptDec, scaler, Dec.parameters(), 1.0)
+        step_scaled_optimizer(loss_g, OptDec, scaler, Dec.parameters(), DECODER_GRADIENT_NORM)
 
         if step_count >= args.discriminator_start_step:
             fake = fake.detach()

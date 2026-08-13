@@ -11,7 +11,16 @@ from module.common import compute_f0, compute_f0_harvest
 from module.discriminator import MultiScaleDiscriminator
 from module.loss import MultiResolutionSTFTLoss
 from module.pitch_estimator import PitchEstimator
-from module.training import DEFAULT_DECODER_LEARNING_RATE, atomic_save, crop_aligned_batch, learning_rate_at_step, step_scaled_optimizer, training_data_loader
+from module.training import (
+    DECODER_GRADIENT_NORM,
+    DECODER_OPTIMIZER_EPSILON,
+    DEFAULT_DECODER_LEARNING_RATE,
+    atomic_save,
+    crop_aligned_batch,
+    learning_rate_at_step,
+    step_scaled_optimizer,
+    training_data_loader,
+)
 
 
 class TrainingContractsTest(unittest.TestCase):
@@ -44,6 +53,8 @@ class TrainingContractsTest(unittest.TestCase):
 
     def test_uses_paper_learning_rate_decay(self):
         self.assertEqual(DEFAULT_DECODER_LEARNING_RATE, 0.001)
+        self.assertEqual(DECODER_OPTIMIZER_EPSILON, 1e-6)
+        self.assertEqual(DECODER_GRADIENT_NORM, 10.0)
         self.assertEqual(learning_rate_at_step(0.001, 99999), 0.001)
         self.assertEqual(learning_rate_at_step(0.001, 100000), 0.0005)
         self.assertEqual(learning_rate_at_step(0.001, 200000), 0.00025)

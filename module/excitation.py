@@ -12,7 +12,7 @@ def generate_excitation(
         voiced_threshold=10.0,
         sine_amplitude=0.1,
         voiced_noise_std=0.003,
-        unvoiced_noise_std=0.3,
+        unvoiced_noise_std=0.001,
         noise=None,
         ):
     if f0.ndim != 3 or f0.shape[1] != 1:

@@ -5,6 +5,8 @@ import torch.nn as nn
 
 
 DEFAULT_DECODER_LEARNING_RATE = 1e-3
+DECODER_OPTIMIZER_EPSILON = 1e-6
+DECODER_GRADIENT_NORM = 10.0
 
 
 def training_data_loader(dataset, batch_size, workers, device):

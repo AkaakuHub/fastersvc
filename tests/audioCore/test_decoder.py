@@ -14,7 +14,7 @@ class DecoderTest(unittest.TestCase):
         self.assertEqual(shift.shape, (1, 4, 8))
         self.assertEqual(scale.shape, (1, 4, 8))
 
-    def test_synthesizes_bounded_waveform_at_expected_length(self):
+    def test_synthesizes_finite_waveform_at_expected_length(self):
         decoder = Decoder(
             channels=[16, 12, 8, 4],
             cond_channels=[16, 12, 8, 4],
@@ -27,7 +27,31 @@ class DecoderTest(unittest.TestCase):
         waveform = decoder.synthesize(content, pitch, loudness)
 
         self.assertEqual(waveform.shape, (1, 960))
-        self.assertLessEqual(waveform.abs().max().item(), 1)
+        self.assertTrue(torch.isfinite(waveform).all())
+
+    def test_conditions_each_upsample_block_at_its_output_resolution(self):
+        decoder = Decoder(
+            channels=[16, 12, 8, 4],
+            cond_channels=[16, 12, 8, 4],
+            content_channels=8,
+        )
+        condition_lengths = []
+        hooks = [
+            block.register_forward_pre_hook(
+                lambda _, inputs: condition_lengths.append(inputs[1].shape[-1])
+            )
+            for block in decoder.ups
+        ]
+
+        decoder(
+            torch.randn(1, 8, 2),
+            torch.ones(1, 1, 10),
+            torch.randn(1, 1, 960),
+        )
+        for hook in hooks:
+            hook.remove()
+
+        self.assertEqual(condition_lengths, [12, 48, 192, 960])
 
     def test_uses_the_declared_channel_count_for_each_upsample_block(self):
         decoder = Decoder(

@@ -50,14 +50,13 @@ class Downsample(nn.Module):
         super().__init__()
         self.factor = factor
 
-        self.pool = nn.AvgPool1d(factor)
         self.down_res = nn.Conv1d(input_channels, output_channels, 1)
         self.c1 = DCC(input_channels, input_channels, 3, 1)
         self.c2 = DCC(input_channels, input_channels, 3, 2)
         self.c3 = DCC(input_channels, output_channels, 3, 4)
 
     def forward(self, x):
-        x = self.pool(x)
+        x = F.interpolate(x, size=x.shape[-1] // self.factor, mode='nearest')
         res = self.down_res(x)
         x = F.leaky_relu(x, 0.2)
         x = self.c1(x)
@@ -85,18 +84,6 @@ class Upsample(nn.Module):
         return shift + scale * x
 
     def forward(self, x, source_condition, loudness_condition):
-        source_condition = F.interpolate(
-            source_condition,
-            scale_factor=self.factor,
-            mode='linear',
-            align_corners=False,
-        )
-        loudness_condition = F.interpolate(
-            loudness_condition,
-            scale_factor=self.factor,
-            mode='linear',
-            align_corners=False,
-        )
         residual = F.interpolate(x, scale_factor=self.factor, mode='linear', align_corners=False)
         residual = self.residual(residual)
         x = F.leaky_relu(x, 0.2)
@@ -135,15 +122,17 @@ class Decoder(nn.Module):
         self.loudness_n_fft = 768
         self.content_channels = content_channels
 
-        self.source_down_input = nn.Conv1d(1, cond_channels[-1], 1)
-        self.loudness_down_input = nn.Conv1d(1, cond_channels[-1], 1)
         self.source_downs = nn.ModuleList([])
         self.loudness_downs = nn.ModuleList([])
-        cond = list(reversed(cond_channels))
-        cond_next = cond[1:] + [cond[-1]]
-        for c, c_n, f in zip(cond, cond_next, reversed(factors)):
-            self.source_downs.append(Downsample(c, c_n, f))
-            self.loudness_downs.append(Downsample(c, c_n, f))
+        condition_channels = list(reversed(cond_channels))
+        condition_inputs = [1] + condition_channels[:-1]
+        condition_factors = [1] + list(reversed(factors[1:]))
+        for input_channels, output_channels, factor in zip(
+                condition_inputs,
+                condition_channels,
+                condition_factors):
+            self.source_downs.append(Downsample(input_channels, output_channels, factor))
+            self.loudness_downs.append(Downsample(input_channels, output_channels, factor))
 
         self.content_in = nn.Conv1d(content_channels, channels[0], 1)
 
@@ -153,7 +142,7 @@ class Decoder(nn.Module):
         for input_channels, output_channels, condition_channels, factor in zip(
                 up_inputs,
                 channels,
-                reversed(cond_next),
+                cond_channels,
                 factors):
             self.ups.append(Upsample(
                 input_channels,
@@ -192,8 +181,8 @@ class Decoder(nn.Module):
 
         source_skips = []
         loudness_skips = []
-        source = self.source_down_input(source_signals)
-        loudness = self.loudness_down_input(loudness_signal)
+        source = source_signals
+        loudness = loudness_signal
         for source_down, loudness_down in zip(self.source_downs, self.loudness_downs):
             source = source_down(source)
             loudness = loudness_down(loudness)
@@ -209,7 +198,7 @@ class Decoder(nn.Module):
             x = upsample(x, source_skip, loudness_skip)
 
         x = self.output_layer(x)
-        x = torch.tanh(x).squeeze(1)
+        x = x.squeeze(1)
         return x
 
     def synthesize(self, x, p, e):

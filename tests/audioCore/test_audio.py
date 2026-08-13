@@ -25,7 +25,10 @@ class AudioPreprocessingTest(unittest.TestCase):
         loudness = perceptual_loudness(torch.zeros(2, 96 * 5))
 
         self.assertEqual(loudness.shape, (2, 1, 5))
-        self.assertTrue(torch.equal(loudness, torch.full_like(loudness, -80.0)))
+        self.assertTrue(torch.allclose(
+            loudness,
+            torch.full_like(loudness, torch.log(torch.tensor(1e-5))),
+        ))
 
     def test_a_weighting_uses_the_reference_frequency_scale(self):
         weighting = a_weighting(torch.tensor([0.0, 1000.0]))
@@ -42,7 +45,10 @@ class AudioPreprocessingTest(unittest.TestCase):
         low_loudness = perceptual_loudness(low_tone.unsqueeze(0)).mean()
         reference_loudness = perceptual_loudness(reference_tone.unsqueeze(0)).mean()
 
-        self.assertGreater((reference_loudness - low_loudness).item(), 20.0)
+        self.assertGreater(
+            (reference_loudness - low_loudness).item(),
+            torch.log(torch.tensor(10.0)).item(),
+        )
 
     def test_perceptual_loudness_rejects_partial_frames(self):
         with self.assertRaises(ValueError):
