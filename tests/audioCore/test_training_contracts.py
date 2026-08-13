@@ -16,6 +16,7 @@ from module.training import (
     DECODER_OPTIMIZER_EPSILON,
     DEFAULT_DECODER_LEARNING_RATE,
     atomic_save,
+    batch_size_per_process,
     crop_aligned_batch,
     discriminator_learning_rate_at_step,
     learning_rate_at_step,
@@ -25,6 +26,11 @@ from module.training import (
 
 
 class TrainingContractsTest(unittest.TestCase):
+    def test_distributes_global_batch_without_changing_optimization_contract(self):
+        self.assertEqual(batch_size_per_process(32, 4), 8)
+        with self.assertRaises(ValueError):
+            batch_size_per_process(30, 4)
+
     def test_training_loader_prefetches_into_pinned_memory_for_cuda(self):
         dataset = torch.utils.data.TensorDataset(torch.zeros(4, 1))
 

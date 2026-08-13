@@ -9,17 +9,26 @@ DECODER_OPTIMIZER_EPSILON = 1e-6
 DECODER_GRADIENT_NORM = 10.0
 
 
-def training_data_loader(dataset, batch_size, workers, device):
+def training_data_loader(dataset, batch_size, workers, device, sampler=None):
     if workers < 0:
         raise ValueError("data loader worker count must not be negative")
     return torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=sampler is None,
+        sampler=sampler,
         num_workers=workers,
         pin_memory=device.type == "cuda",
         persistent_workers=workers > 0,
     )
+
+
+def batch_size_per_process(batch_size, process_count):
+    if process_count <= 0:
+        raise ValueError("process count must be positive")
+    if batch_size % process_count != 0:
+        raise ValueError("batch size must be divisible by process count")
+    return batch_size // process_count
 
 
 def step_scaled_optimizer(loss, optimizer, scaler, parameters, max_gradient_norm):
